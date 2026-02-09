@@ -23,16 +23,16 @@ def _build_data(
     ten_year = _series([ten_year_value], start="2025-12-31")
     unrate = _series(unrate_values)
 
-    willshire = _series([200.0, 210.0], start="2025-11-30")
+    market_cap = _series([200.0, 210.0], start="2025-11-30")
     gdp = _series([100.0, 100.0], start="2025-10-31")
-    buffett = build_buffett_ratio(willshire, gdp)
+    buffett = build_buffett_ratio(market_cap, gdp)
     buffett.iloc[-1] = buffett_ratio_value
 
     m2.attrs["source"] = "FRED:M2SL"
     hiring.attrs["source"] = "FRED:JTSHIR"
     ten_year.attrs["source"] = "FRED:DGS10"
     unrate.attrs["source"] = "FRED:UNRATE"
-    buffett.attrs["source"] = "FRED:WILL5000PR/FRED:GDP"
+    buffett.attrs["source"] = "FRED:NCBCEL/FRED:GDP"
 
     return {
         "m2": m2,

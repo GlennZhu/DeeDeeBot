@@ -16,17 +16,26 @@ def prepare_monthly_series(series: pd.Series) -> pd.Series:
     return monthly
 
 
-def build_buffett_ratio(willshire: pd.Series, gdp: pd.Series) -> pd.Series:
+def build_buffett_ratio(
+    market_cap: pd.Series,
+    gdp: pd.Series,
+    market_cap_unit_divisor: float = 1.0,
+) -> pd.Series:
     """
-    Build Buffett ratio from monthly Wilshire and GDP.
+    Build Buffett ratio from monthly total market value and GDP.
 
+    `market_cap_unit_divisor` converts market cap values into GDP units before
+    division (for example, market cap in millions and GDP in billions => 1000).
     GDP is forward-filled to month-end timestamps so the two series align.
     """
-    willshire_monthly = prepare_monthly_series(willshire)
-    gdp_monthly = prepare_monthly_series(gdp)
-    gdp_aligned = gdp_monthly.reindex(willshire_monthly.index, method="ffill")
+    if market_cap_unit_divisor <= 0:
+        raise ValueError("market_cap_unit_divisor must be > 0.")
 
-    ratio = willshire_monthly / gdp_aligned
+    market_cap_monthly = prepare_monthly_series(market_cap) / float(market_cap_unit_divisor)
+    gdp_monthly = prepare_monthly_series(gdp)
+    gdp_aligned = gdp_monthly.reindex(market_cap_monthly.index, method="ffill")
+
+    ratio = market_cap_monthly / gdp_aligned
     ratio = ratio.dropna()
     ratio.name = "BUFFETT_RATIO"
     return ratio

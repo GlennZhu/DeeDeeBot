@@ -135,7 +135,7 @@ def _buffett_signal(series: pd.Series) -> SignalRow:
             if is_overheat
             else "Buffett ratio < 2.0: no overheat signal."
         ),
-        source=_source(series, "FRED:WILL5000PR/FRED:GDP"),
+        source=_source(series, "FRED:NCBCEL/FRED:GDP"),
         stale_days=_stale_days(as_of),
     )
 

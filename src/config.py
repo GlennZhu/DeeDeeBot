@@ -26,8 +26,9 @@ SERIES_CONFIG = {
     "buffett_ratio": {
         "metric_name": "Buffett Indicator",
         "source": "FRED",
-        "willshire_series_id": "WILL5000PR",
-        "fallback_willshire_series_id": "SP500",
+        "market_cap_series_id": "NCBCEL",
+        "fallback_market_cap_series_id": "NCBEILQ027S",
+        "market_cap_unit_divisor": 1000.0,
         "gdp_series_id": "GDP",
         "frequency": "monthly",
     },

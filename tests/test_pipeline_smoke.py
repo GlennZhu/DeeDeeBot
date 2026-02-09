@@ -24,7 +24,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
             "M2SL": _series([100.0 + i for i in range(24)], "2024-01-31", "M"),
             "JTSHIR": _series([3.8, 3.7, 3.6], "2025-10-31", "M"),
             "UNRATE": _series([4.0, 4.1, 4.2], "2025-10-31", "M"),
-            "WILL5000PR": _series([50.0, 52.0, 54.0], "2025-10-31", "M"),
+            "NCBCEL": _series([50_000.0, 52_000.0, 54_000.0], "2025-10-31", "M"),
             "GDP": _series([25.0, 26.0], "2025-09-30", "Q"),
             "DGS10": _series([4.2, 4.3, 4.4], "2025-12-29", "D"),
         }
@@ -71,4 +71,3 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "stale_days",
         "last_updated_utc",
     }.issubset(set(signals.columns))
-

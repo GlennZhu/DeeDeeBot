@@ -85,19 +85,20 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
     m2 = _attach_source(fetch_fred_series(m2_cfg["series_id"], start_date), "FRED:M2SL")
     hiring = _attach_source(fetch_fred_series(hiring_cfg["series_id"], start_date), "FRED:JTSHIR")
     unrate = _attach_source(fetch_fred_series(unrate_cfg["series_id"], start_date), "FRED:UNRATE")
-    willshire_id = buffett_cfg["willshire_series_id"]
+    market_cap_id = buffett_cfg["market_cap_series_id"]
     gdp_id = buffett_cfg["gdp_series_id"]
-    willshire_source = f"FRED:{willshire_id}"
+    market_cap_source = f"FRED:{market_cap_id}"
+    market_cap_unit_divisor = float(buffett_cfg.get("market_cap_unit_divisor", 1.0))
     try:
-        willshire = fetch_fred_series(willshire_id, start_date)
+        market_cap = fetch_fred_series(market_cap_id, start_date)
     except Exception:
-        fallback_willshire_id = buffett_cfg.get("fallback_willshire_series_id")
-        if not fallback_willshire_id:
+        fallback_market_cap_id = buffett_cfg.get("fallback_market_cap_series_id")
+        if not fallback_market_cap_id:
             raise
-        willshire = fetch_fred_series(fallback_willshire_id, start_date)
-        willshire_source = f"FRED:{fallback_willshire_id} (proxy for {willshire_id})"
+        market_cap = fetch_fred_series(fallback_market_cap_id, start_date)
+        market_cap_source = f"FRED:{fallback_market_cap_id} (fallback for {market_cap_id})"
     gdp = fetch_fred_series(gdp_id, start_date)
-    willshire = _attach_source(willshire, willshire_source)
+    market_cap = _attach_source(market_cap, market_cap_source)
     gdp = _attach_source(gdp, f"FRED:{gdp_id}")
 
     try:
@@ -108,8 +109,12 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
         except Exception as exc:
             raise RuntimeError("Failed to fetch 10Y yield from both FRED and Yahoo.") from exc
 
-    buffett_ratio = build_buffett_ratio(willshire, gdp)
-    buffett_ratio = _attach_source(buffett_ratio, f"{willshire_source}/FRED:{gdp_id}")
+    buffett_ratio = build_buffett_ratio(
+        market_cap,
+        gdp,
+        market_cap_unit_divisor=market_cap_unit_divisor,
+    )
+    buffett_ratio = _attach_source(buffett_ratio, f"{market_cap_source}/FRED:{gdp_id}")
 
     metric_series = {
         "m2": _clean_series(prepare_monthly_series(m2)),
