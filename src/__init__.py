@@ -1,0 +1,2 @@
+"""Macro signal dashboard package."""
+
