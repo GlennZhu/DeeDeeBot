@@ -67,4 +67,5 @@ jobs:
 
       - name: Skip non-target schedule run
         if: steps.guard.outputs.run_pipeline != 'true'
-        run: echo "Skipping run: not 4:30 PM Pacific weekday."
+        run: |
+          echo "Skipping run: not 4:30 PM Pacific weekday."
