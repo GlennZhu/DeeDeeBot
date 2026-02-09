@@ -13,13 +13,26 @@ from urllib import request
 import pandas as pd
 
 from src.config import DEFAULT_LOOKBACK_YEARS, METRIC_ORDER, SERIES_CONFIG
-from src.data_fetch import fetch_fred_series, fetch_tnx_fallback
+from src.data_fetch import (
+    fetch_fred_series,
+    fetch_stock_daily_history,
+    fetch_stock_intraday_latest,
+    fetch_tnx_fallback,
+)
 from src.signals import compute_signals
+from src.stock_signals import (
+    STOCK_SIGNAL_COLUMNS,
+    STOCK_TRIGGER_COLUMNS,
+    compute_stock_signal_row,
+)
 from src.transform import build_buffett_ratio, prepare_monthly_series
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived"
+STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
+STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
+DEFAULT_STOCK_WATCHLIST = ["GOOG", "AVGO", "NVDA", "MSFT"]
 
 THRESHOLD_TRIGGER_MAP: dict[str, dict[str, set[str]]] = {
     "m2": {
@@ -56,6 +69,15 @@ THRESHOLD_LABELS: dict[str, str] = {
     "buffett_ratio_gte_2_0": "Buffett ratio >= 2.0",
     "unemployment_mom_gte_0_1": "Unemployment MoM >= 0.1",
     "unemployment_mom_gte_0_2": "Unemployment MoM >= 0.2",
+}
+
+STOCK_TRIGGER_LABELS: dict[str, str] = {
+    "entry_bullish_alignment": "Entry signal: bullish alignment",
+    "exit_price_below_sma50": "Hard sell: price < SMA50",
+    "exit_death_cross_50_lt_100": "Death cross: SMA50 < SMA100",
+    "exit_death_cross_50_lt_200": "Death cross: SMA50 < SMA200",
+    "exit_rsi_overbought": "RSI overbought: RSI14 > 80",
+    "rsi_bearish_divergence": "RSI bearish divergence",
 }
 
 
@@ -110,6 +132,142 @@ def _latest_snapshot(metric_key: str, series: pd.Series, now_iso: str) -> dict[s
 def _write_csv(path: Path, frame: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(path, index=False)
+
+
+def _normalize_ticker(raw_value: Any) -> str:
+    return str(raw_value).strip().upper()
+
+
+def _write_watchlist(path: Path, tickers: list[str]) -> None:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for ticker in tickers:
+        clean = _normalize_ticker(ticker)
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        normalized.append(clean)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"ticker": normalized}).to_csv(path, index=False)
+
+
+def _load_or_initialize_watchlist(path: Path) -> list[str]:
+    if not path.exists():
+        _write_watchlist(path, DEFAULT_STOCK_WATCHLIST)
+        return list(DEFAULT_STOCK_WATCHLIST)
+
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        print(f"Warning: failed to read watchlist at {path}: {exc}; reinitializing defaults.")
+        _write_watchlist(path, DEFAULT_STOCK_WATCHLIST)
+        return list(DEFAULT_STOCK_WATCHLIST)
+
+    if "ticker" not in frame.columns:
+        print(f"Warning: watchlist at {path} has no 'ticker' column; reinitializing defaults.")
+        _write_watchlist(path, DEFAULT_STOCK_WATCHLIST)
+        return list(DEFAULT_STOCK_WATCHLIST)
+
+    tickers: list[str] = []
+    seen: set[str] = set()
+    for raw in frame["ticker"].tolist():
+        ticker = _normalize_ticker(raw)
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        tickers.append(ticker)
+
+    if not tickers:
+        _write_watchlist(path, DEFAULT_STOCK_WATCHLIST)
+        return list(DEFAULT_STOCK_WATCHLIST)
+
+    if tickers != frame["ticker"].astype(str).tolist():
+        _write_watchlist(path, tickers)
+    return tickers
+
+
+def _empty_stock_signal_row(ticker: str, now_iso: str, status: str, status_message: str) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "ticker": ticker,
+        "as_of_date": "",
+        "price": float("nan"),
+        "sma14": float("nan"),
+        "sma50": float("nan"),
+        "sma100": float("nan"),
+        "sma200": float("nan"),
+        "rsi14": float("nan"),
+        "source": f"YAHOO:{ticker}",
+        "stale_days": float("nan"),
+        "status": status,
+        "status_message": status_message,
+        "last_updated_utc": now_iso,
+    }
+    for trigger_col in STOCK_TRIGGER_COLUMNS:
+        row[trigger_col] = False
+    return row
+
+
+def _compute_watchlist_signals(watchlist: list[str], start_date: str, now_iso: str) -> pd.DataFrame:
+    if not watchlist:
+        return pd.DataFrame(columns=[*STOCK_SIGNAL_COLUMNS, "last_updated_utc"])
+
+    rows: list[dict[str, Any]] = []
+    for ticker in watchlist:
+        try:
+            daily_close = fetch_stock_daily_history(ticker, start_date)
+        except Exception as exc:
+            rows.append(
+                _empty_stock_signal_row(
+                    ticker=ticker,
+                    now_iso=now_iso,
+                    status="fetch_error",
+                    status_message=f"Failed to fetch daily history: {exc}",
+                )
+            )
+            continue
+
+        latest_price: float | None = None
+        try:
+            latest_price = fetch_stock_intraday_latest(ticker)
+        except Exception as exc:
+            print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
+
+        try:
+            row = compute_stock_signal_row(ticker, daily_close=daily_close, latest_price=latest_price)
+            row["last_updated_utc"] = now_iso
+            rows.append(row)
+        except Exception as exc:
+            rows.append(
+                _empty_stock_signal_row(
+                    ticker=ticker,
+                    now_iso=now_iso,
+                    status="compute_error",
+                    status_message=f"Failed to compute stock signals: {exc}",
+                )
+            )
+
+    frame = pd.DataFrame(rows)
+    expected_cols = [*STOCK_SIGNAL_COLUMNS, "last_updated_utc"]
+    for col in expected_cols:
+        if col not in frame.columns:
+            frame[col] = pd.NA
+    return frame[expected_cols].sort_values("ticker").reset_index(drop=True)
+
+
+def _load_previous_stock_signals(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        print(f"Warning: failed to read previous stock signals at {path}: {exc}")
+        return pd.DataFrame()
+
+    required = {"ticker", *STOCK_TRIGGER_COLUMNS}
+    if not required.issubset(frame.columns):
+        return pd.DataFrame()
+    return frame
 
 
 def _load_previous_signals(path: Path) -> pd.DataFrame:
@@ -186,6 +344,58 @@ def _detect_new_threshold_events(previous: pd.DataFrame, current: pd.DataFrame) 
     return events
 
 
+def _as_bool(raw_value: Any) -> bool:
+    if isinstance(raw_value, bool):
+        return raw_value
+    if pd.isna(raw_value):
+        return False
+    if isinstance(raw_value, (int, float)):
+        return bool(raw_value)
+    normalized = str(raw_value).strip().lower()
+    return normalized in {"1", "true", "yes", "y", "on"}
+
+
+def _detect_new_stock_trigger_events(previous: pd.DataFrame, current: pd.DataFrame) -> list[dict[str, Any]]:
+    if current.empty:
+        return []
+    if not {"ticker", *STOCK_TRIGGER_COLUMNS}.issubset(current.columns):
+        return []
+
+    previous_map: dict[tuple[str, str], bool] = {}
+    if not previous.empty and {"ticker", *STOCK_TRIGGER_COLUMNS}.issubset(previous.columns):
+        for _, row in previous.iterrows():
+            ticker = _normalize_ticker(row.get("ticker", ""))
+            if not ticker:
+                continue
+            for trigger_id in STOCK_TRIGGER_COLUMNS:
+                previous_map[(ticker, trigger_id)] = _as_bool(row.get(trigger_id))
+
+    events: list[dict[str, Any]] = []
+    for _, row in current.iterrows():
+        ticker = _normalize_ticker(row.get("ticker", ""))
+        if not ticker:
+            continue
+
+        for trigger_id in STOCK_TRIGGER_COLUMNS:
+            current_state = _as_bool(row.get(trigger_id))
+            previous_state = previous_map.get((ticker, trigger_id), False)
+            if not current_state or previous_state:
+                continue
+
+            events.append(
+                {
+                    "ticker": ticker,
+                    "trigger_id": trigger_id,
+                    "trigger_label": STOCK_TRIGGER_LABELS.get(trigger_id, trigger_id),
+                    "as_of_date": str(row.get("as_of_date", "unknown")),
+                    "price": row.get("price"),
+                    "status": str(row.get("status", "")),
+                }
+            )
+
+    return events
+
+
 def _build_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
     lines = [f"Macro threshold trigger alert ({now_iso})"]
     for event in events:
@@ -195,6 +405,19 @@ def _build_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
                 f"- {event['metric_name']} ({event['metric_key']}): {threshold_labels} triggered; "
                 f"state {event['prev_signal_state']} -> {event['signal_state']}; "
                 f"value={_value_for_message(event['value'])}; as_of={event['as_of_date']}"
+            )
+        )
+    return "\n".join(lines)
+
+
+def _build_stock_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
+    lines = [f"Stock watchlist trigger alert ({now_iso})"]
+    for event in events:
+        lines.append(
+            (
+                f"- {event['ticker']}: {event['trigger_label']} triggered; "
+                f"price={_value_for_message(event['price'])}; "
+                f"as_of={event['as_of_date']}; status={event['status']}"
             )
         )
     return "\n".join(lines)
@@ -229,11 +452,30 @@ def _notify_new_thresholds(previous: pd.DataFrame, current: pd.DataFrame, now_is
         print(f"Warning: failed to send Discord alert: {exc}")
 
 
+def _notify_new_stock_triggers(previous: pd.DataFrame, current: pd.DataFrame, now_iso: str) -> None:
+    events = _detect_new_stock_trigger_events(previous, current)
+    if not events:
+        return
+
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        print("Warning: DISCORD_WEBHOOK_URL is not set; skipping stock trigger alert notification.")
+        return
+
+    message = _build_stock_discord_message(events, now_iso)
+    try:
+        _post_discord_message(webhook_url, message)
+    except Exception as exc:
+        print(f"Warning: failed to send stock Discord alert: {exc}")
+
+
 def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LOOKBACK_YEARS) -> None:
     """Run full fetch-transform-signal pipeline and persist CSV artifacts."""
     if not start_date:
         start_date = _default_start_date(lookback_years)
     previous_signals = _load_previous_signals(DERIVED_DATA_DIR / "signals_latest.csv")
+    previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
+    watchlist = _load_or_initialize_watchlist(STOCK_WATCHLIST_PATH)
 
     m2_cfg = SERIES_CONFIG["m2"]
     hiring_cfg = SERIES_CONFIG["hiring_rate"]
@@ -301,7 +543,11 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
 
     _write_csv(DERIVED_DATA_DIR / "metric_snapshot.csv", metric_snapshot)
     _write_csv(DERIVED_DATA_DIR / "signals_latest.csv", signals)
+    stock_signals = _compute_watchlist_signals(watchlist=watchlist, start_date=start_date, now_iso=now_iso)
+    _write_csv(STOCK_SIGNALS_PATH, stock_signals)
+
     _notify_new_thresholds(previous_signals, signals, now_iso)
+    _notify_new_stock_triggers(previous_stock_signals, stock_signals, now_iso)
 
 
 def _parse_args() -> argparse.Namespace:

@@ -1,0 +1,5 @@
+ticker,as_of_date,price,sma14,sma50,sma100,sma200,rsi14,entry_bullish_alignment,exit_price_below_sma50,exit_death_cross_50_lt_100,exit_death_cross_50_lt_200,exit_rsi_overbought,rsi_bearish_divergence,source,stale_days,status,status_message,last_updated_utc
+AVGO,2026-02-06,333.4999,325.95356036202566,351.36259626660154,349.8946984018555,309.0782493931885,49.61803112661838,False,True,False,False,False,False,YAHOO:AVGO,3,ok,Signals computed successfully.,2026-02-09T08:27:26Z
+GOOG,2026-02-06,323.93,333.29071315220426,322.4271998535156,293.37199989013675,239.84599994506837,45.26479430960811,True,False,False,False,False,True,YAHOO:GOOG,3,ok,Signals computed successfully.,2026-02-09T08:27:26Z
+MSFT,2026-02-06,403.0,439.81714303152904,468.91700073242185,490.48509979248047,486.9125500488281,30.184667139583155,False,True,True,True,False,False,YAHOO:MSFT,3,ok,Signals computed successfully.,2026-02-09T08:27:26Z
+NVDA,2026-02-06,185.19,184.37571589878627,183.56240076904297,185.05940091552733,169.6727006027222,50.937885279437545,True,False,True,False,False,False,YAHOO:NVDA,3,ok,Signals computed successfully.,2026-02-09T08:27:26Z

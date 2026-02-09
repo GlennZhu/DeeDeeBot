@@ -49,3 +49,53 @@ def fetch_tnx_fallback(start_date: str) -> pd.Series:
     normalized = _normalize_series(close / 10.0, "DGS10")
     return normalized
 
+
+def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
+    """Fetch daily close history for a stock ticker from Yahoo Finance."""
+    frame = yf.download(
+        ticker,
+        start=start_date,
+        interval="1d",
+        progress=False,
+        auto_adjust=False,
+        threads=False,
+    )
+    if frame.empty:
+        raise RuntimeError(f"No daily stock data returned from Yahoo Finance for {ticker}.")
+
+    close = frame["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+
+    normalized = _normalize_series(close, ticker)
+    if normalized.empty:
+        raise RuntimeError(f"Daily close data for {ticker} is empty after normalization.")
+    return normalized
+
+
+def fetch_stock_intraday_latest(ticker: str) -> float | None:
+    """Fetch latest 5-minute close for a stock ticker (including pre/post market)."""
+    frame = yf.download(
+        ticker,
+        period="1d",
+        interval="5m",
+        progress=False,
+        auto_adjust=False,
+        threads=False,
+        prepost=True,
+    )
+    if frame.empty:
+        return None
+
+    close = frame["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+
+    clean = close.dropna().astype(float)
+    if clean.empty:
+        return None
+
+    value = float(clean.iloc[-1])
+    if value <= 0:
+        return None
+    return value

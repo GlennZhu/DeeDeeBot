@@ -1,30 +1,59 @@
-# Macro Signal Monitor
+# Macro + Stock Signal Monitor
 
-Macro dashboard that tracks five independent market/regime signals:
+Dashboard and pipeline that track:
 
-- M2 money supply trend (`M2SL`)
-- Hiring rate recession alert (`JTSHIR`)
-- 10Y Treasury yield pressure levels (`DGS10`, fallback `^TNX/10`)
-- Buffett indicator (`NCBCEL / GDP`, using market value of corporate equities with unit normalization)
-- Unemployment MoM change (`UNRATE`)
+- Macro regime signals (M2, Hiring, 10Y yield, Buffett indicator, Unemployment)
+- A stock watchlist with technical monitoring and first-time Discord alerts
 
 ## Stack
 
 - Python
 - `pandas_datareader` (FRED macro data)
-- `yfinance` (10Y fallback)
+- `yfinance` (10Y fallback + stock watchlist data)
 - GitHub Actions (scheduled cache refresh)
 - Streamlit (dashboard UI)
 
 ## Project Structure
 
-- `app.py`: Streamlit dashboard (reads cached CSV only)
-- `src/pipeline.py`: fetch/transform/signal/cache pipeline
-- `src/signals.py`: signal logic and thresholds
-- `data/raw/*.csv`: per-metric historical series cache
-- `data/derived/metric_snapshot.csv`: latest values
-- `data/derived/signals_latest.csv`: latest signal states
-- `.github/workflows/update_data.yml`: weekday scheduled refresh
+- `app.py`: Streamlit dashboard with tabs (`Macro Monitor`, `Stock Watchlist`)
+- `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord first-trigger alerts
+- `src/signals.py`: macro signal logic and thresholds
+- `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence)
+- `src/data_fetch.py`: FRED and Yahoo fetchers
+- `data/raw/*.csv`: per-metric historical macro series cache
+- `data/derived/metric_snapshot.csv`: latest macro values
+- `data/derived/signals_latest.csv`: latest macro signal states
+- `data/derived/stock_watchlist.csv`: tracked watchlist symbols
+- `data/derived/stock_signals_latest.csv`: latest stock signal states
+- `.github/workflows/update_data.yml`: weekday scheduled refresh (Pacific time guard)
+
+## Stock Watchlist Metrics
+
+For each watched ticker, the pipeline checks:
+
+1. Entry signal:
+- `SMA14 > SMA50 > (SMA100 or SMA200)`
+
+2. Exit and risk signals:
+- `price < SMA50`
+- `SMA50 < SMA100`
+- `SMA50 < SMA200`
+- `RSI14 > 80`
+
+3. Bearish RSI divergence:
+- Latest two confirmed price highs `P1`, `P2` with corresponding RSI highs `R1`, `R2`
+- Trigger when `P2 > P1` and `R2 < R1`
+
+Alerts are sent to Discord only on first trigger (`false -> true` versus previous run).
+
+## Default Watchlist Seed
+
+If `data/derived/stock_watchlist.csv` does not exist, it is initialized with:
+
+- `GOOG`
+- `AVGO`
+- `NVDA`
+- `MSFT`
 
 ## Local Setup
 
@@ -52,7 +81,7 @@ python -m src.pipeline --start-date 2011-01-01 --lookback-years 15
 streamlit run app.py
 ```
 
-The dashboard intentionally uses only cached CSV files. It does not query live APIs at page load.
+The dashboard uses cached CSV files only (no live API calls on page load).
 
 ## Tests
 
@@ -60,6 +89,11 @@ The dashboard intentionally uses only cached CSV files. It does not query live A
 pytest
 ```
 
-## GitHub Actions
+## GitHub Actions Schedule
 
-Workflow `update_data.yml` runs weekdays (`30 23 * * 1-5` UTC), refreshes CSV cache, and commits changes only when data files differ.
+Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded at runtime to run only when local Pacific time is exactly **4:30 PM on weekdays**:
+
+- `30 23 * * 1-5`
+- `30 0 * * 2-6`
+
+`workflow_dispatch` remains available for manual runs.
