@@ -29,7 +29,7 @@ def _build_data(
     buffett.iloc[-1] = buffett_ratio_value
 
     m2.attrs["source"] = "FRED:M2SL"
-    hiring.attrs["source"] = "FRED:JTSHIL"
+    hiring.attrs["source"] = "FRED:JTSHIR"
     ten_year.attrs["source"] = "FRED:DGS10"
     unrate.attrs["source"] = "FRED:UNRATE"
     buffett.attrs["source"] = "FRED:WILL5000PR/FRED:GDP"

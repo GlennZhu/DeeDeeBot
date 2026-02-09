@@ -12,7 +12,7 @@ SERIES_CONFIG = {
     "hiring_rate": {
         "metric_name": "Hiring Rate",
         "source": "FRED",
-        "series_id": "JTSHIL",
+        "series_id": "JTSHIR",
         "frequency": "monthly",
     },
     "ten_year_yield": {

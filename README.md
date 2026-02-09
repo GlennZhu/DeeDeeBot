@@ -3,7 +3,7 @@
 Macro dashboard that tracks five independent market/regime signals:
 
 - M2 money supply trend (`M2SL`)
-- Hiring rate recession alert (`JTSHIL`)
+- Hiring rate recession alert (`JTSHIR`)
 - 10Y Treasury yield pressure levels (`DGS10`, fallback `^TNX/10`)
 - Buffett indicator (`WILL5000PR / GDP`, with `SP500` proxy fallback if `WILL5000PR` is unavailable)
 - Unemployment MoM change (`UNRATE`)

@@ -89,7 +89,7 @@ def _hiring_signal(series: pd.Series) -> SignalRow:
             if is_alert
             else "Hiring rate is above 3.4: no recession alert."
         ),
-        source=_source(series, "FRED:JTSHIL"),
+        source=_source(series, "FRED:JTSHIR"),
         stale_days=_stale_days(as_of),
     )
 

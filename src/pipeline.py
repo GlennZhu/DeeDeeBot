@@ -83,7 +83,7 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
     unrate_cfg = SERIES_CONFIG["unemployment_rate"]
 
     m2 = _attach_source(fetch_fred_series(m2_cfg["series_id"], start_date), "FRED:M2SL")
-    hiring = _attach_source(fetch_fred_series(hiring_cfg["series_id"], start_date), "FRED:JTSHIL")
+    hiring = _attach_source(fetch_fred_series(hiring_cfg["series_id"], start_date), "FRED:JTSHIR")
     unrate = _attach_source(fetch_fred_series(unrate_cfg["series_id"], start_date), "FRED:UNRATE")
     willshire_id = buffett_cfg["willshire_series_id"]
     gdp_id = buffett_cfg["gdp_series_id"]

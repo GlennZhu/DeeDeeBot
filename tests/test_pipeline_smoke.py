@@ -22,7 +22,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         del start_date
         mapping = {
             "M2SL": _series([100.0 + i for i in range(24)], "2024-01-31", "M"),
-            "JTSHIL": _series([3.8, 3.7, 3.6], "2025-10-31", "M"),
+            "JTSHIR": _series([3.8, 3.7, 3.6], "2025-10-31", "M"),
             "UNRATE": _series([4.0, 4.1, 4.2], "2025-10-31", "M"),
             "WILL5000PR": _series([50.0, 52.0, 54.0], "2025-10-31", "M"),
             "GDP": _series([25.0, 26.0], "2025-09-30", "Q"),
