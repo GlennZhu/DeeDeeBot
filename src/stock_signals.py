@@ -212,7 +212,7 @@ def compute_stock_signal_row(
         "exit_death_cross_50_lt_200": bool(exit_death_cross_50_lt_200),
         "exit_rsi_overbought": bool(exit_rsi_overbought),
         "rsi_bearish_divergence": bool(rsi_bearish_divergence),
-        "source": f"YAHOO:{ticker}",
+        "source": str(clean.attrs.get("source", f"YAHOO:{ticker}")),
         "stale_days": int(stale_days),
         "status": status,
         "status_message": status_message,

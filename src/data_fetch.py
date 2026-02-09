@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pandas as pd
 import yfinance as yf
 from pandas_datareader.data import DataReader
@@ -15,6 +17,36 @@ def _normalize_series(series: pd.Series, series_name: str) -> pd.Series:
     clean = clean.dropna().astype(float)
     clean.name = series_name
     return clean
+
+
+def _extract_close_series(frame: pd.DataFrame) -> pd.Series:
+    """Extract a close-price series from a yfinance/pandas_datareader frame."""
+    if frame.empty:
+        return pd.Series(dtype=float)
+
+    close: pd.Series | pd.DataFrame | None = None
+    if "Close" in frame.columns:
+        close = frame["Close"]
+    elif "Adj Close" in frame.columns:
+        close = frame["Adj Close"]
+    elif isinstance(frame.columns, pd.MultiIndex):
+        top_level = frame.columns.get_level_values(0)
+        if "Close" in set(top_level):
+            close = frame["Close"]
+        elif "Adj Close" in set(top_level):
+            close = frame["Adj Close"]
+
+    if close is None:
+        return pd.Series(dtype=float)
+
+    if isinstance(close, pd.DataFrame):
+        for col in close.columns:
+            candidate = close[col].dropna()
+            if not candidate.empty:
+                return candidate.astype(float)
+        return pd.Series(dtype=float)
+
+    return close.dropna().astype(float)
 
 
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
@@ -42,35 +74,66 @@ def fetch_tnx_fallback(start_date: str) -> pd.Series:
     if frame.empty:
         raise RuntimeError("No data returned from Yahoo Finance for ^TNX.")
 
-    close = frame["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
+    close = _extract_close_series(frame)
+    if close.empty:
+        raise RuntimeError("No close data returned from Yahoo Finance for ^TNX.")
 
     normalized = _normalize_series(close / 10.0, "DGS10")
     return normalized
 
 
 def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
-    """Fetch daily close history for a stock ticker from Yahoo Finance."""
-    frame = yf.download(
-        ticker,
-        start=start_date,
-        interval="1d",
-        progress=False,
-        auto_adjust=False,
-        threads=False,
-    )
-    if frame.empty:
-        raise RuntimeError(f"No daily stock data returned from Yahoo Finance for {ticker}.")
+    """Fetch daily close history for a stock ticker, with Yahoo retry + Stooq fallback."""
+    symbol = str(ticker).strip().upper()
+    yahoo_attempts = [
+        {"start": start_date, "interval": "1d"},
+        {"period": "max", "interval": "1d"},
+    ]
 
-    close = frame["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
+    for params in yahoo_attempts:
+        for attempt in range(2):
+            try:
+                frame = yf.download(
+                    symbol,
+                    progress=False,
+                    auto_adjust=False,
+                    threads=False,
+                    **params,
+                )
+            except Exception:
+                frame = pd.DataFrame()
+            close = _extract_close_series(frame)
+            if close.empty:
+                if attempt < 1:
+                    time.sleep(0.5)
+                continue
 
-    normalized = _normalize_series(close, ticker)
-    if normalized.empty:
-        raise RuntimeError(f"Daily close data for {ticker} is empty after normalization.")
-    return normalized
+            normalized = _normalize_series(close, symbol)
+            if "period" in params:
+                start_ts = pd.to_datetime(start_date, errors="coerce")
+                if pd.notna(start_ts):
+                    normalized = normalized[normalized.index >= start_ts]
+            if normalized.empty:
+                continue
+
+            normalized.attrs["source"] = f"YAHOO:{symbol}"
+            return normalized
+
+    # Fallback: Stooq is resilient when Yahoo rate-limits.
+    stooq_symbol = f"{symbol}.US"
+    try:
+        stooq_frame = DataReader(stooq_symbol, "stooq", start=start_date)
+        close = _extract_close_series(stooq_frame)
+        normalized = _normalize_series(close, symbol)
+        if not normalized.empty:
+            normalized.attrs["source"] = f"STOOQ:{stooq_symbol}"
+            return normalized
+    except Exception as exc:
+        raise RuntimeError(
+            f"No daily stock data returned for {symbol} from Yahoo Finance or Stooq: {exc}"
+        ) from exc
+
+    raise RuntimeError(f"No daily stock data returned for {symbol} from Yahoo Finance or Stooq.")
 
 
 def fetch_stock_intraday_latest(ticker: str) -> float | None:
@@ -87,9 +150,9 @@ def fetch_stock_intraday_latest(ticker: str) -> float | None:
     if frame.empty:
         return None
 
-    close = frame["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
+    close = _extract_close_series(frame)
+    if close.empty:
+        return None
 
     clean = close.dropna().astype(float)
     if clean.empty:
