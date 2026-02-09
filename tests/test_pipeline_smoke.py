@@ -71,3 +71,96 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "stale_days",
         "last_updated_utc",
     }.issubset(set(signals.columns))
+
+
+def test_detect_new_threshold_events_flags_only_new_trigger() -> None:
+    previous = pd.DataFrame(
+        [
+            {
+                "metric_key": "ten_year_yield",
+                "metric_name": "10Y Treasury Yield",
+                "signal_state": "equity_pressure_zone",
+                "value": 4.5,
+                "as_of_date": "2026-02-01",
+            },
+            {
+                "metric_key": "hiring_rate",
+                "metric_name": "Hiring Rate",
+                "signal_state": "normal",
+                "value": 3.6,
+                "as_of_date": "2026-02-01",
+            },
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            {
+                "metric_key": "ten_year_yield",
+                "metric_name": "10Y Treasury Yield",
+                "signal_state": "extreme_pressure_bond_opportunity",
+                "value": 5.0,
+                "as_of_date": "2026-02-02",
+            },
+            {
+                "metric_key": "hiring_rate",
+                "metric_name": "Hiring Rate",
+                "signal_state": "recession_alert",
+                "value": 3.4,
+                "as_of_date": "2026-02-02",
+            },
+            {
+                "metric_key": "buffett_ratio",
+                "metric_name": "Buffett Indicator",
+                "signal_state": "overheat_peak_risk",
+                "value": 2.1,
+                "as_of_date": "2026-02-02",
+            },
+        ]
+    )
+
+    events = pipeline._detect_new_threshold_events(previous, current)
+
+    assert len(events) == 2
+    by_metric = {event["metric_key"]: event for event in events}
+    assert by_metric["ten_year_yield"]["new_threshold_ids"] == ["ten_year_yield_gte_5_0"]
+    assert by_metric["hiring_rate"]["new_threshold_ids"] == ["hiring_rate_lte_3_4"]
+
+
+def test_notify_new_thresholds_posts_to_discord(monkeypatch) -> None:
+    previous = pd.DataFrame(
+        [
+            {
+                "metric_key": "hiring_rate",
+                "metric_name": "Hiring Rate",
+                "signal_state": "normal",
+                "value": 3.6,
+                "as_of_date": "2026-02-01",
+            }
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            {
+                "metric_key": "hiring_rate",
+                "metric_name": "Hiring Rate",
+                "signal_state": "recession_alert",
+                "value": 3.4,
+                "as_of_date": "2026-02-02",
+            }
+        ]
+    )
+
+    payload: dict[str, str] = {}
+
+    def fake_post(url: str, content: str) -> None:
+        payload["url"] = url
+        payload["content"] = content
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setattr(pipeline, "_post_discord_message", fake_post)
+
+    pipeline._notify_new_thresholds(previous, current, "2026-02-02T00:00:00Z")
+
+    assert payload["url"] == "https://example.com/webhook"
+    assert "Hiring Rate" in payload["content"]
+    assert "Hiring rate <= 3.4" in payload["content"]

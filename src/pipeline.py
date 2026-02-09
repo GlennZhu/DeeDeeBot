@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
+from urllib import request
 
 import pandas as pd
 
@@ -16,6 +20,43 @@ from src.transform import build_buffett_ratio, prepare_monthly_series
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived"
+
+THRESHOLD_TRIGGER_MAP: dict[str, dict[str, set[str]]] = {
+    "m2": {
+        "long_environment": {"m2_yoy_gt_0"},
+        "caution_contraction": set(),
+        "insufficient_data": set(),
+    },
+    "hiring_rate": {
+        "recession_alert": {"hiring_rate_lte_3_4"},
+        "normal": set(),
+    },
+    "ten_year_yield": {
+        "normal": set(),
+        "equity_pressure_zone": {"ten_year_yield_gte_4_4"},
+        "extreme_pressure_bond_opportunity": {"ten_year_yield_gte_4_4", "ten_year_yield_gte_5_0"},
+    },
+    "buffett_ratio": {
+        "overheat_peak_risk": {"buffett_ratio_gte_2_0"},
+        "normal": set(),
+    },
+    "unemployment_rate": {
+        "labor_weakening": {"unemployment_mom_gte_0_1", "unemployment_mom_gte_0_2"},
+        "watch": {"unemployment_mom_gte_0_1"},
+        "stable": set(),
+        "insufficient_data": set(),
+    },
+}
+
+THRESHOLD_LABELS: dict[str, str] = {
+    "m2_yoy_gt_0": "M2 YoY > 0",
+    "hiring_rate_lte_3_4": "Hiring rate <= 3.4",
+    "ten_year_yield_gte_4_4": "10Y yield >= 4.4",
+    "ten_year_yield_gte_5_0": "10Y yield >= 5.0",
+    "buffett_ratio_gte_2_0": "Buffett ratio >= 2.0",
+    "unemployment_mom_gte_0_1": "Unemployment MoM >= 0.1",
+    "unemployment_mom_gte_0_2": "Unemployment MoM >= 0.2",
+}
 
 
 def _default_start_date(lookback_years: int) -> str:
@@ -71,10 +112,128 @@ def _write_csv(path: Path, frame: pd.DataFrame) -> None:
     frame.to_csv(path, index=False)
 
 
+def _load_previous_signals(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        print(f"Warning: failed to read previous signals at {path}: {exc}")
+        return pd.DataFrame()
+
+    required = {"metric_key", "signal_state"}
+    if not required.issubset(frame.columns):
+        return pd.DataFrame()
+    return frame
+
+
+def _thresholds_for_state(metric_key: str, signal_state: str) -> set[str]:
+    metric_map = THRESHOLD_TRIGGER_MAP.get(metric_key, {})
+    return set(metric_map.get(signal_state, set()))
+
+
+def _value_for_message(raw_value: Any) -> str:
+    if pd.isna(raw_value):
+        return "n/a"
+    try:
+        numeric = float(raw_value)
+    except (TypeError, ValueError):
+        return str(raw_value)
+    return f"{numeric:.4f}"
+
+
+def _detect_new_threshold_events(previous: pd.DataFrame, current: pd.DataFrame) -> list[dict[str, Any]]:
+    if previous.empty or current.empty:
+        return []
+    if not {"metric_key", "signal_state"}.issubset(current.columns):
+        return []
+
+    prev_thresholds: dict[str, set[str]] = {}
+    prev_states: dict[str, str] = {}
+    for _, row in previous.iterrows():
+        metric_key = str(row.get("metric_key", ""))
+        signal_state = str(row.get("signal_state", ""))
+        if not metric_key:
+            continue
+        prev_thresholds[metric_key] = _thresholds_for_state(metric_key, signal_state)
+        prev_states[metric_key] = signal_state
+
+    events: list[dict[str, Any]] = []
+    for _, row in current.iterrows():
+        metric_key = str(row.get("metric_key", ""))
+        signal_state = str(row.get("signal_state", ""))
+        if not metric_key or metric_key not in prev_states:
+            continue
+
+        current_thresholds = _thresholds_for_state(metric_key, signal_state)
+        newly_triggered = sorted(current_thresholds - prev_thresholds.get(metric_key, set()))
+        if not newly_triggered:
+            continue
+
+        events.append(
+            {
+                "metric_key": metric_key,
+                "metric_name": str(row.get("metric_name", metric_key)),
+                "as_of_date": str(row.get("as_of_date", "unknown")),
+                "value": row.get("value"),
+                "signal_state": signal_state,
+                "prev_signal_state": prev_states.get(metric_key, "unknown"),
+                "new_threshold_ids": newly_triggered,
+                "new_threshold_labels": [THRESHOLD_LABELS.get(tid, tid) for tid in newly_triggered],
+            }
+        )
+
+    return events
+
+
+def _build_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
+    lines = [f"Macro threshold trigger alert ({now_iso})"]
+    for event in events:
+        threshold_labels = ", ".join(event["new_threshold_labels"])
+        lines.append(
+            (
+                f"- {event['metric_name']} ({event['metric_key']}): {threshold_labels} triggered; "
+                f"state {event['prev_signal_state']} -> {event['signal_state']}; "
+                f"value={_value_for_message(event['value'])}; as_of={event['as_of_date']}"
+            )
+        )
+    return "\n".join(lines)
+
+
+def _post_discord_message(webhook_url: str, content: str) -> None:
+    payload = json.dumps({"content": content}).encode("utf-8")
+    req = request.Request(
+        webhook_url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with request.urlopen(req, timeout=10):
+        return
+
+
+def _notify_new_thresholds(previous: pd.DataFrame, current: pd.DataFrame, now_iso: str) -> None:
+    events = _detect_new_threshold_events(previous, current)
+    if not events:
+        return
+
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        print("Warning: DISCORD_WEBHOOK_URL is not set; skipping threshold alert notification.")
+        return
+
+    message = _build_discord_message(events, now_iso)
+    try:
+        _post_discord_message(webhook_url, message)
+    except Exception as exc:
+        print(f"Warning: failed to send Discord alert: {exc}")
+
+
 def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LOOKBACK_YEARS) -> None:
     """Run full fetch-transform-signal pipeline and persist CSV artifacts."""
     if not start_date:
         start_date = _default_start_date(lookback_years)
+    previous_signals = _load_previous_signals(DERIVED_DATA_DIR / "signals_latest.csv")
 
     m2_cfg = SERIES_CONFIG["m2"]
     hiring_cfg = SERIES_CONFIG["hiring_rate"]
@@ -142,6 +301,7 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
 
     _write_csv(DERIVED_DATA_DIR / "metric_snapshot.csv", metric_snapshot)
     _write_csv(DERIVED_DATA_DIR / "signals_latest.csv", signals)
+    _notify_new_thresholds(previous_signals, signals, now_iso)
 
 
 def _parse_args() -> argparse.Namespace:
