@@ -74,6 +74,23 @@ def _apply_history_window(frame: pd.DataFrame, years: int | None) -> pd.DataFram
     return frame[frame["date"] >= cutoff]
 
 
+def _to_m2_yoy(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty or "value" not in frame.columns:
+        return pd.DataFrame(columns=["date", "value"])
+    yoy = frame[["date", "value"]].dropna().sort_values("date").copy()
+    yoy["value"] = yoy["value"].pct_change(periods=12) * 100
+    return yoy.dropna(subset=["value"])
+
+
+def _latest_mom_change(frame: pd.DataFrame) -> float | None:
+    if frame.empty or "value" not in frame.columns:
+        return None
+    clean = frame[["date", "value"]].dropna().sort_values("date")
+    if len(clean) < 2:
+        return None
+    return float(clean["value"].iloc[-1] - clean["value"].iloc[-2])
+
+
 def main() -> None:
     st.set_page_config(page_title="Macro Signal Monitor", layout="wide")
     st.title("Macro Signal Monitor")
@@ -104,35 +121,72 @@ def main() -> None:
     if missing:
         st.warning(f"Partial data: missing metrics {', '.join(missing)}")
 
+    series_by_metric = {metric_key: _load_metric_series(metric_key) for metric_key in METRIC_ORDER}
+
     cols = st.columns(5)
     for idx, metric_key in enumerate(METRIC_ORDER):
         metric_name = SERIES_CONFIG[metric_key]["metric_name"]
+        if metric_key == "m2":
+            metric_name = "M2 YoY"
         card = cols[idx]
         card.subheader(metric_name)
 
         metric_snapshot = snapshot[snapshot["metric_key"] == metric_key] if not snapshot.empty else pd.DataFrame()
         metric_signal = signals[signals["metric_key"] == metric_key] if not signals.empty else pd.DataFrame()
+        metric_series = series_by_metric.get(metric_key, pd.DataFrame())
 
-        if metric_snapshot.empty:
+        if metric_snapshot.empty and metric_signal.empty:
             card.caption("No data")
             continue
 
-        row = metric_snapshot.iloc[0]
-        value = float(row["value"])
-        card.metric("Value", _format_value(metric_key, value))
-        card.caption(f"As of: {pd.Timestamp(row['as_of_date']).date().isoformat()}")
-        card.caption(f"Stale days: {int(row['stale_days'])}")
+        signal_row = metric_signal.iloc[0] if not metric_signal.empty else None
+        snapshot_row = metric_snapshot.iloc[0] if not metric_snapshot.empty else None
 
-        if not metric_signal.empty:
-            state = str(metric_signal.iloc[0]["signal_state"])
+        if metric_key == "m2":
+            m2_yoy = _to_m2_yoy(metric_series)
+            if m2_yoy.empty:
+                card.metric("M2 YoY", "N/A")
+            else:
+                latest_yoy = m2_yoy.iloc[-1]
+                card.metric("M2 YoY", f"{float(latest_yoy['value']):.2f}%")
+        elif metric_key == "unemployment_rate" and snapshot_row is not None:
+            value = float(snapshot_row["value"])
+            mom_change = _latest_mom_change(metric_series)
+            if mom_change is None:
+                card.metric("Value", _format_value(metric_key, value))
+            else:
+                card.metric(
+                    "Value",
+                    _format_value(metric_key, value),
+                    delta=f"{mom_change:+.2f} pp MoM",
+                    delta_color="inverse",
+                )
+        elif snapshot_row is not None:
+            value = float(snapshot_row["value"])
+            card.metric("Value", _format_value(metric_key, value))
+
+        if snapshot_row is not None:
+            card.caption(f"As of: {pd.Timestamp(snapshot_row['as_of_date']).date().isoformat()}")
+            card.caption(f"Stale days: {int(snapshot_row['stale_days'])}")
+
+        if signal_row is not None:
+            state = str(signal_row["signal_state"])
             card.markdown(_signal_badge(state), unsafe_allow_html=True)
+            if "threshold_rule" in metric_signal.columns and pd.notna(signal_row["threshold_rule"]):
+                card.caption(f"Rule: {signal_row['threshold_rule']}")
+            if "message" in metric_signal.columns and pd.notna(signal_row["message"]):
+                card.caption(f"Interpretation: {signal_row['message']}")
+            if "source" in metric_signal.columns and pd.notna(signal_row["source"]):
+                card.caption(f"Source: {signal_row['source']}")
+        elif snapshot_row is not None and "source" in metric_snapshot.columns and pd.notna(snapshot_row["source"]):
+            card.caption(f"Source: {snapshot_row['source']}")
 
     st.subheader("Historical Series")
     history_years = HISTORY_OPTIONS[selected_window]
 
     for metric_key in METRIC_ORDER:
         metric_name = SERIES_CONFIG[metric_key]["metric_name"]
-        series = _load_metric_series(metric_key)
+        series = series_by_metric.get(metric_key, pd.DataFrame())
         if series.empty:
             continue
 
@@ -141,26 +195,13 @@ def main() -> None:
             continue
 
         chart_frame = series[["date", "value"]].dropna().sort_values("date")
+        if metric_key == "m2":
+            metric_name = "M2 YoY (%)"
+            chart_frame = _to_m2_yoy(chart_frame)
+            if chart_frame.empty:
+                continue
         st.markdown(f"**{metric_name}**")
         st.line_chart(chart_frame.set_index("date")["value"])
-
-    st.subheader("Signal Interpretation")
-    if signals.empty:
-        st.caption("No signal output found.")
-    else:
-        table_cols = [
-            "metric_name",
-            "as_of_date",
-            "value",
-            "signal_state",
-            "threshold_rule",
-            "message",
-            "source",
-            "stale_days",
-        ]
-        existing_cols = [col for col in table_cols if col in signals.columns]
-        table = signals[existing_cols].copy()
-        st.dataframe(table, use_container_width=True)
 
 
 if __name__ == "__main__":
