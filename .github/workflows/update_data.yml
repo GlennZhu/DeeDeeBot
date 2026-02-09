@@ -2,7 +2,7 @@ name: Update Macro Data Cache
 
 on:
   schedule:
-    - cron: "30 23 * * 1-5"
+    - cron: "30 23 * * *"
   workflow_dispatch:
 
 permissions:
