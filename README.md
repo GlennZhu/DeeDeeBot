@@ -5,7 +5,7 @@ Macro dashboard that tracks five independent market/regime signals:
 - M2 money supply trend (`M2SL`)
 - Hiring rate recession alert (`JTSHIL`)
 - 10Y Treasury yield pressure levels (`DGS10`, fallback `^TNX/10`)
-- Buffett indicator (`WILL5000PR / GDP`)
+- Buffett indicator (`WILL5000PR / GDP`, with `SP500` proxy fallback if `WILL5000PR` is unavailable)
 - Unemployment MoM change (`UNRATE`)
 
 ## Stack
@@ -63,4 +63,3 @@ pytest
 ## GitHub Actions
 
 Workflow `update_data.yml` runs weekdays (`30 23 * * 1-5` UTC), refreshes CSV cache, and commits changes only when data files differ.
-

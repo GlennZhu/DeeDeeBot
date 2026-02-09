@@ -27,6 +27,7 @@ SERIES_CONFIG = {
         "metric_name": "Buffett Indicator",
         "source": "FRED",
         "willshire_series_id": "WILL5000PR",
+        "fallback_willshire_series_id": "SP500",
         "gdp_series_id": "GDP",
         "frequency": "monthly",
     },
@@ -47,4 +48,3 @@ METRIC_ORDER = [
 ]
 
 DEFAULT_LOOKBACK_YEARS = 15
-

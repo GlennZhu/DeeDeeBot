@@ -10,6 +10,8 @@ import pandas as pd
 from src.config import SERIES_CONFIG
 from src.transform import prepare_monthly_series
 
+FLOAT_TOLERANCE = 1e-9
+
 
 @dataclass(frozen=True)
 class SignalRow:
@@ -146,10 +148,10 @@ def _unemployment_signal(series: pd.Series) -> SignalRow:
     if pd.isna(mom):
         state = "insufficient_data"
         message = "Need at least 2 months of unemployment data for MoM change."
-    elif mom >= 0.2:
+    elif float(mom) >= 0.2 - FLOAT_TOLERANCE:
         state = "labor_weakening"
         message = f"Unemployment MoM change is {mom:+.2f}: labor weakening."
-    elif mom >= 0.1:
+    elif float(mom) >= 0.1 - FLOAT_TOLERANCE:
         state = "watch"
         message = f"Unemployment MoM change is {mom:+.2f}: watch zone."
     else:

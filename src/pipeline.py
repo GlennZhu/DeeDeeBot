@@ -85,10 +85,20 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
     m2 = _attach_source(fetch_fred_series(m2_cfg["series_id"], start_date), "FRED:M2SL")
     hiring = _attach_source(fetch_fred_series(hiring_cfg["series_id"], start_date), "FRED:JTSHIL")
     unrate = _attach_source(fetch_fred_series(unrate_cfg["series_id"], start_date), "FRED:UNRATE")
-    willshire = fetch_fred_series(buffett_cfg["willshire_series_id"], start_date)
-    gdp = fetch_fred_series(buffett_cfg["gdp_series_id"], start_date)
-    willshire = _attach_source(willshire, "FRED:WILL5000PR")
-    gdp = _attach_source(gdp, "FRED:GDP")
+    willshire_id = buffett_cfg["willshire_series_id"]
+    gdp_id = buffett_cfg["gdp_series_id"]
+    willshire_source = f"FRED:{willshire_id}"
+    try:
+        willshire = fetch_fred_series(willshire_id, start_date)
+    except Exception:
+        fallback_willshire_id = buffett_cfg.get("fallback_willshire_series_id")
+        if not fallback_willshire_id:
+            raise
+        willshire = fetch_fred_series(fallback_willshire_id, start_date)
+        willshire_source = f"FRED:{fallback_willshire_id} (proxy for {willshire_id})"
+    gdp = fetch_fred_series(gdp_id, start_date)
+    willshire = _attach_source(willshire, willshire_source)
+    gdp = _attach_source(gdp, f"FRED:{gdp_id}")
 
     try:
         ten_year = _attach_source(fetch_fred_series(ten_cfg["series_id"], start_date), "FRED:DGS10")
@@ -99,7 +109,7 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
             raise RuntimeError("Failed to fetch 10Y yield from both FRED and Yahoo.") from exc
 
     buffett_ratio = build_buffett_ratio(willshire, gdp)
-    buffett_ratio = _attach_source(buffett_ratio, "FRED:WILL5000PR/FRED:GDP")
+    buffett_ratio = _attach_source(buffett_ratio, f"{willshire_source}/FRED:{gdp_id}")
 
     metric_series = {
         "m2": _clean_series(prepare_monthly_series(m2)),
