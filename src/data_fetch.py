@@ -58,7 +58,7 @@ def _parse_stooq_quote_timestamp(
     quote_date_raw: str,
     quote_time_raw: str,
 ) -> datetime | None:
-    date_digits = quote_date_raw.strip()
+    date_digits = "".join(ch for ch in quote_date_raw.strip() if ch.isdigit())
     time_digits = "".join(ch for ch in quote_time_raw.strip() if ch.isdigit())
     if len(date_digits) != 8 or not date_digits.isdigit() or len(time_digits) < 6:
         return None
@@ -75,6 +75,28 @@ def _parse_stooq_quote_timestamp(
     except Exception:
         localized = naive.replace(tzinfo=timezone.utc)
     return localized.astimezone(timezone.utc)
+
+
+def _parse_stooq_float(raw_value: str) -> float | None:
+    text = str(raw_value).strip()
+    if not text or text in {"N/D", "-"}:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _parse_stooq_percent_to_decimal(raw_value: str) -> float | None:
+    text = str(raw_value).strip()
+    if not text or text in {"N/D", "-"}:
+        return None
+    if text.endswith("%"):
+        text = text[:-1]
+    try:
+        return float(text) / 100.0
+    except ValueError:
+        return None
 
 
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
@@ -123,7 +145,8 @@ def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
 
     for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
         quote_symbol = stooq_symbol.lower()
-        url = f"https://stooq.com/q/l/?s={quote_symbol}&i=1"
+        # m3 adds both absolute and percent daily change values.
+        url = f"https://stooq.com/q/l/?s={quote_symbol}&i=1&f=sd2t2ohlcvpm3"
         fetched_at_utc = datetime.now(timezone.utc)
 
         try:
@@ -143,13 +166,8 @@ def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
         if len(row) < 7:
             continue
 
-        close_raw = str(row[6]).strip()
-        if not close_raw or close_raw in {"N/D", "-"}:
-            continue
-
-        try:
-            price = float(close_raw)
-        except ValueError:
+        price = _parse_stooq_float(row[6])
+        if price is None:
             continue
 
         if price > 0:
@@ -163,8 +181,21 @@ def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
                     int((fetched_at_utc - quote_timestamp_utc).total_seconds()),
                 )
 
+            previous_close = _parse_stooq_float(row[8]) if len(row) > 8 else None
+            day_change = _parse_stooq_float(row[9]) if len(row) > 9 else None
+            day_change_pct = _parse_stooq_percent_to_decimal(row[10]) if len(row) > 10 else None
+
+            # Fallback: derive missing values from prev close if available.
+            if day_change is None and previous_close is not None:
+                day_change = float(price) - float(previous_close)
+            if day_change_pct is None and previous_close not in (None, 0):
+                day_change_pct = (float(price) - float(previous_close)) / float(previous_close)
+
             return {
                 "price": float(price),
+                "previous_close": previous_close,
+                "day_change": day_change,
+                "day_change_pct": day_change_pct,
                 "quote_timestamp_utc": quote_timestamp_iso,
                 "quote_age_seconds": quote_age_seconds,
                 "source": f"STOOQ_INTRADAY:{stooq_symbol}",

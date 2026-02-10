@@ -526,6 +526,12 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
                 row["intraday_quote_timestamp_utc"] = latest_quote.get("quote_timestamp_utc")
                 row["intraday_quote_age_seconds"] = latest_quote.get("quote_age_seconds")
                 row["intraday_quote_source"] = latest_quote.get("source")
+                quote_day_change = latest_quote.get("day_change")
+                if quote_day_change is not None and pd.notna(quote_day_change):
+                    row["day_change"] = float(quote_day_change)
+                quote_day_change_pct = latest_quote.get("day_change_pct")
+                if quote_day_change_pct is not None and pd.notna(quote_day_change_pct):
+                    row["day_change_pct"] = float(quote_day_change_pct)
             row["last_updated_utc"] = now_iso
             rows.append(row)
         except Exception as exc:
