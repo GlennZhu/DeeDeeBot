@@ -57,11 +57,6 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         return _series([base + i * 0.4 for i in range(260)], "2025-01-02", "D")
 
     monkeypatch.setattr(pipeline, "fetch_fred_series", fake_fetch_fred_series)
-    monkeypatch.setattr(
-        pipeline,
-        "fetch_tnx_fallback",
-        lambda start_date: _series([4.4], "2025-12-31", "D"),
-    )
     monkeypatch.setattr(pipeline, "fetch_stock_daily_history", fake_fetch_stock_daily_history)
     monkeypatch.setattr(pipeline, "fetch_stock_intraday_latest", lambda ticker: 250.0 if ticker == "NVDA" else None)
 

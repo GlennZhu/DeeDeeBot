@@ -9,7 +9,8 @@ Dashboard and pipeline that track:
 
 - Python
 - `pandas_datareader` (FRED macro data)
-- `yfinance` (10Y fallback + stock watchlist data)
+- `pandas_datareader` Stooq feed (stock daily history)
+- Stooq quote endpoint (stock intraday quote at run time)
 - GitHub Actions (scheduled cache refresh)
 - Streamlit (dashboard UI)
 
@@ -19,7 +20,7 @@ Dashboard and pipeline that track:
 - `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord first-trigger alerts
 - `src/signals.py`: macro signal logic and thresholds
 - `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence)
-- `src/data_fetch.py`: FRED and Yahoo fetchers
+- `src/data_fetch.py`: FRED and Stooq fetchers (daily + intraday quote endpoint)
 - `data/raw/*.csv`: per-metric historical macro series cache
 - `data/derived/metric_snapshot.csv`: latest macro values
 - `data/derived/signals_latest.csv`: latest macro signal states
@@ -45,6 +46,7 @@ For each watched ticker, the pipeline checks:
 - Trigger when `P2 > P1` and `R2 < R1`
 
 Alerts are sent to Discord only on first trigger (`false -> true` versus previous run).
+Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
 
 ## Default Watchlist Seed
 

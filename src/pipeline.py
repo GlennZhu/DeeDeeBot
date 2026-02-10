@@ -17,7 +17,6 @@ from src.data_fetch import (
     fetch_fred_series,
     fetch_stock_daily_history,
     fetch_stock_intraday_latest,
-    fetch_tnx_fallback,
 )
 from src.signals import compute_signals
 from src.stock_signals import (
@@ -197,7 +196,7 @@ def _empty_stock_signal_row(ticker: str, now_iso: str, status: str, status_messa
         "sma100": float("nan"),
         "sma200": float("nan"),
         "rsi14": float("nan"),
-        "source": f"YAHOO:{ticker}",
+        "source": f"STOOQ:{ticker}",
         "stale_days": float("nan"),
         "status": status,
         "status_message": status_message,
@@ -230,6 +229,8 @@ def _compute_watchlist_signals(watchlist: list[str], start_date: str, now_iso: s
         latest_price: float | None = None
         try:
             latest_price = fetch_stock_intraday_latest(ticker)
+            if latest_price is not None:
+                daily_close.attrs["intraday_source"] = f"STOOQ_INTRADAY:{ticker}"
         except Exception as exc:
             print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
 
@@ -502,13 +503,7 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
     market_cap = _attach_source(market_cap, market_cap_source)
     gdp = _attach_source(gdp, f"FRED:{gdp_id}")
 
-    try:
-        ten_year = _attach_source(fetch_fred_series(ten_cfg["series_id"], start_date), "FRED:DGS10")
-    except Exception:
-        try:
-            ten_year = _attach_source(fetch_tnx_fallback(start_date), "YAHOO:^TNX")
-        except Exception as exc:
-            raise RuntimeError("Failed to fetch 10Y yield from both FRED and Yahoo.") from exc
+    ten_year = _attach_source(fetch_fred_series(ten_cfg["series_id"], start_date), "FRED:DGS10")
 
     buffett_ratio = build_buffett_ratio(
         market_cap,

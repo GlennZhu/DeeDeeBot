@@ -19,8 +19,6 @@ SERIES_CONFIG = {
         "metric_name": "10Y Treasury Yield",
         "source": "FRED",
         "series_id": "DGS10",
-        "fallback_source": "YAHOO",
-        "fallback_ticker": "^TNX",
         "frequency": "daily",
     },
     "buffett_ratio": {

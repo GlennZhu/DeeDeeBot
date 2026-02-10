@@ -159,9 +159,11 @@ def compute_stock_signal_row(
 
     evaluated = clean.copy()
     price = float(clean.iloc[-1])
+    price_basis = "daily_close"
     if latest_price is not None and pd.notna(latest_price) and float(latest_price) > 0:
         price = float(latest_price)
         evaluated.iloc[-1] = price
+        price_basis = "intraday"
 
     sma14 = float(compute_sma(evaluated, 14).iloc[-1])
     sma50 = float(compute_sma(evaluated, 50).iloc[-1])
@@ -177,7 +179,7 @@ def compute_stock_signal_row(
     rsi_bearish_divergence = detect_bearish_rsi_divergence(evaluated, compute_rsi14(evaluated, period=14))
 
     status = "ok"
-    status_message = "Signals computed successfully."
+    status_message = f"Signals computed successfully (price basis: {price_basis})."
     if len(evaluated) < 200:
         status = "insufficient_data"
         status_message = f"Need at least 200 daily bars; found {len(evaluated)}."
@@ -197,6 +199,11 @@ def compute_stock_signal_row(
     now_utc = datetime.now(timezone.utc).date()
     stale_days = (now_utc - as_of.date()).days
 
+    source = str(clean.attrs.get("source", f"STOOQ:{ticker}"))
+    intraday_source = str(clean.attrs.get("intraday_source", "")).strip()
+    if intraday_source:
+        source = f"{source} + {intraday_source}"
+
     return {
         "ticker": ticker,
         "as_of_date": as_of.date().isoformat(),
@@ -212,7 +219,7 @@ def compute_stock_signal_row(
         "exit_death_cross_50_lt_200": bool(exit_death_cross_50_lt_200),
         "exit_rsi_overbought": bool(exit_rsi_overbought),
         "rsi_bearish_divergence": bool(rsi_bearish_divergence),
-        "source": str(clean.attrs.get("source", f"YAHOO:{ticker}")),
+        "source": source,
         "stale_days": int(stale_days),
         "status": status,
         "status_message": status_message,

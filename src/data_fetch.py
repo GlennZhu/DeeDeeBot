@@ -1,11 +1,11 @@
-"""Data fetching utilities for FRED and Yahoo Finance."""
+"""Data fetching utilities for FRED and Stooq."""
 
 from __future__ import annotations
 
-import time
+import csv
+from urllib import request
 
 import pandas as pd
-import yfinance as yf
 from pandas_datareader.data import DataReader
 
 
@@ -20,33 +20,35 @@ def _normalize_series(series: pd.Series, series_name: str) -> pd.Series:
 
 
 def _extract_close_series(frame: pd.DataFrame) -> pd.Series:
-    """Extract a close-price series from a yfinance/pandas_datareader frame."""
+    """Extract a close-price series from a dataframe."""
     if frame.empty:
         return pd.Series(dtype=float)
 
-    close: pd.Series | pd.DataFrame | None = None
     if "Close" in frame.columns:
-        close = frame["Close"]
-    elif "Adj Close" in frame.columns:
-        close = frame["Adj Close"]
-    elif isinstance(frame.columns, pd.MultiIndex):
-        top_level = frame.columns.get_level_values(0)
-        if "Close" in set(top_level):
-            close = frame["Close"]
-        elif "Adj Close" in set(top_level):
-            close = frame["Adj Close"]
+        return frame["Close"].dropna().astype(float)
+    if "Adj Close" in frame.columns:
+        return frame["Adj Close"].dropna().astype(float)
+    return pd.Series(dtype=float)
 
-    if close is None:
-        return pd.Series(dtype=float)
 
-    if isinstance(close, pd.DataFrame):
-        for col in close.columns:
-            candidate = close[col].dropna()
-            if not candidate.empty:
-                return candidate.astype(float)
-        return pd.Series(dtype=float)
+def _stock_symbol_variants(raw_symbol: str) -> list[str]:
+    variants: list[str] = []
+    for variant in [raw_symbol, raw_symbol.replace(".", "-"), raw_symbol.replace("/", "-")]:
+        candidate = variant.strip().upper()
+        if candidate and candidate not in variants:
+            variants.append(candidate)
+    return variants
 
-    return close.dropna().astype(float)
+
+def _stooq_symbol_candidates(raw_symbol: str) -> list[str]:
+    symbols: list[str] = []
+    for variant in _stock_symbol_variants(raw_symbol):
+        us_symbol = f"{variant}.US"
+        if us_symbol not in symbols:
+            symbols.append(us_symbol)
+        if variant not in symbols:
+            symbols.append(variant)
+    return symbols
 
 
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
@@ -57,108 +59,73 @@ def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
     return _normalize_series(frame[series_id], series_id)
 
 
-def fetch_tnx_fallback(start_date: str) -> pd.Series:
-    """
-    Fetch 10Y Treasury yield from Yahoo (^TNX).
-
-    Yahoo's ^TNX quotes are typically 10x the percentage yield. The values are
-    scaled down by 10 to align with FRED DGS10 units.
-    """
-    frame = yf.download(
-        "^TNX",
-        start=start_date,
-        progress=False,
-        auto_adjust=False,
-        threads=False,
-    )
-    if frame.empty:
-        raise RuntimeError("No data returned from Yahoo Finance for ^TNX.")
-
-    close = _extract_close_series(frame)
-    if close.empty:
-        raise RuntimeError("No close data returned from Yahoo Finance for ^TNX.")
-
-    normalized = _normalize_series(close / 10.0, "DGS10")
-    return normalized
-
-
 def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
-    """Fetch daily close history for a stock ticker, with Yahoo retry + Stooq fallback."""
-    symbol = str(ticker).strip().upper()
-    yahoo_attempts = [
-        {"start": start_date, "interval": "1d"},
-        {"period": "max", "interval": "1d"},
-    ]
+    """Fetch daily close history for a stock ticker from Stooq only."""
+    raw_symbol = str(ticker).strip().upper()
+    if not raw_symbol:
+        raise RuntimeError("Ticker cannot be empty.")
 
-    for params in yahoo_attempts:
-        for attempt in range(2):
-            try:
-                frame = yf.download(
-                    symbol,
-                    progress=False,
-                    auto_adjust=False,
-                    threads=False,
-                    **params,
-                )
-            except Exception:
-                frame = pd.DataFrame()
+    last_error: Exception | None = None
+    for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
+        try:
+            frame = DataReader(stooq_symbol, "stooq", start=start_date)
             close = _extract_close_series(frame)
             if close.empty:
-                if attempt < 1:
-                    time.sleep(0.5)
                 continue
 
-            normalized = _normalize_series(close, symbol)
-            if "period" in params:
-                start_ts = pd.to_datetime(start_date, errors="coerce")
-                if pd.notna(start_ts):
-                    normalized = normalized[normalized.index >= start_ts]
+            normalized = _normalize_series(close, raw_symbol)
             if normalized.empty:
                 continue
 
-            normalized.attrs["source"] = f"YAHOO:{symbol}"
-            return normalized
-
-    # Fallback: Stooq is resilient when Yahoo rate-limits.
-    stooq_symbol = f"{symbol}.US"
-    try:
-        stooq_frame = DataReader(stooq_symbol, "stooq", start=start_date)
-        close = _extract_close_series(stooq_frame)
-        normalized = _normalize_series(close, symbol)
-        if not normalized.empty:
             normalized.attrs["source"] = f"STOOQ:{stooq_symbol}"
             return normalized
-    except Exception as exc:
-        raise RuntimeError(
-            f"No daily stock data returned for {symbol} from Yahoo Finance or Stooq: {exc}"
-        ) from exc
+        except Exception as exc:
+            last_error = exc
 
-    raise RuntimeError(f"No daily stock data returned for {symbol} from Yahoo Finance or Stooq.")
+    if last_error is not None:
+        raise RuntimeError(
+            f"No daily stock data returned from Stooq for {raw_symbol}: {last_error}"
+        ) from last_error
+    raise RuntimeError(f"No daily stock data returned from Stooq for {raw_symbol}.")
 
 
 def fetch_stock_intraday_latest(ticker: str) -> float | None:
-    """Fetch latest 5-minute close for a stock ticker (including pre/post market)."""
-    frame = yf.download(
-        ticker,
-        period="1d",
-        interval="5m",
-        progress=False,
-        auto_adjust=False,
-        threads=False,
-        prepost=True,
-    )
-    if frame.empty:
+    """Fetch latest intraday quote from Stooq quote endpoint."""
+    raw_symbol = str(ticker).strip().upper()
+    if not raw_symbol:
         return None
 
-    close = _extract_close_series(frame)
-    if close.empty:
-        return None
+    for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
+        quote_symbol = stooq_symbol.lower()
+        url = f"https://stooq.com/q/l/?s={quote_symbol}&i=1"
 
-    clean = close.dropna().astype(float)
-    if clean.empty:
-        return None
+        try:
+            with request.urlopen(url, timeout=10) as response:
+                payload = response.read().decode("utf-8", errors="ignore").strip()
+        except Exception:
+            continue
 
-    value = float(clean.iloc[-1])
-    if value <= 0:
-        return None
-    return value
+        if not payload:
+            continue
+
+        try:
+            row = next(csv.reader([payload]))
+        except Exception:
+            continue
+
+        if len(row) < 7:
+            continue
+
+        close_raw = str(row[6]).strip()
+        if not close_raw or close_raw in {"N/D", "-"}:
+            continue
+
+        try:
+            price = float(close_raw)
+        except ValueError:
+            continue
+
+        if price > 0:
+            return price
+
+    return None
