@@ -1,5 +1,5 @@
-ticker
-GOOG
-AVGO
-NVDA
-MSFT
+ticker,benchmark
+GOOG,QQQ
+AVGO,QQQ
+NVDA,QQQ
+MSFT,QQQ

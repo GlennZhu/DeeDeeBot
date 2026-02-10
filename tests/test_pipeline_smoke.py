@@ -96,7 +96,9 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
     }.issubset(set(signals.columns))
 
     watchlist = pd.read_csv(derived_dir / "stock_watchlist.csv")
+    assert {"ticker", "benchmark"}.issubset(set(watchlist.columns))
     assert watchlist["ticker"].tolist() == ["GOOG", "AVGO", "NVDA", "MSFT"]
+    assert watchlist["benchmark"].tolist() == ["QQQ", "QQQ", "QQQ", "QQQ"]
 
     stock_signals = pd.read_csv(derived_dir / "stock_signals_latest.csv")
     assert {
@@ -108,12 +110,24 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "sma100",
         "sma200",
         "rsi14",
+        "benchmark_ticker",
+        "benchmark_price",
+        "benchmark_sma50",
+        "rs_ratio",
+        "rs_ratio_ma20",
+        "alpha_1m",
+        "rs_structural_divergence",
+        "rs_trend_down",
+        "rs_negative_alpha",
+        "relative_strength_weak",
+        "relative_strength_reasons",
         "entry_bullish_alignment",
         "exit_price_below_sma50",
         "exit_death_cross_50_lt_100",
         "exit_death_cross_50_lt_200",
         "exit_rsi_overbought",
         "rsi_bearish_divergence",
+        "strong_sell_weak_strength",
         "source",
         "stale_days",
         "status",

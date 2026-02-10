@@ -53,6 +53,7 @@ jobs:
         run: python -m src.pipeline
 
       - name: Commit changed CSV files
+        id: commit_data
         if: steps.guard.outputs.run_pipeline == 'true'
         run: |
           if [[ -n "$(git status --porcelain data/raw data/derived)" ]]; then
@@ -61,9 +62,131 @@ jobs:
             git add data/raw data/derived
             git commit -m "chore(data): update macro and stock dashboard cache"
             git push
+            echo "data_changed=true" >> "$GITHUB_OUTPUT"
+            echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           else
             echo "No data changes detected."
+            echo "data_changed=false" >> "$GITHUB_OUTPUT"
+            echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Notify Slack
+        if: always() && steps.guard.outputs.run_pipeline == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          WORKFLOW_STATUS: ${{ job.status }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          DATA_CHANGED: ${{ steps.commit_data.outputs.data_changed }}
+          COMMIT_SHA: ${{ steps.commit_data.outputs.commit_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "$SLACK_WEBHOOK_URL" ]]; then
+            echo "Warning: SLACK_WEBHOOK_URL is not set; skipping Slack notification."
+            exit 0
+          fi
+
+          data_changed="${DATA_CHANGED:-unknown}"
+          short_sha="unknown"
+          if [[ -n "${COMMIT_SHA:-}" ]]; then
+            short_sha="${COMMIT_SHA:0:7}"
+          fi
+
+          if [[ "$WORKFLOW_STATUS" == "success" && "$data_changed" == "true" ]]; then
+            status_emoji=":white_check_mark:"
+            status_title="Data refresh completed"
+            change_note="CSV cache updated and pushed"
+          elif [[ "$WORKFLOW_STATUS" == "success" && "$data_changed" == "false" ]]; then
+            status_emoji=":white_check_mark:"
+            status_title="Data refresh completed"
+            change_note="Refresh completed; no CSV changes detected"
+          elif [[ "$WORKFLOW_STATUS" == "success" ]]; then
+            status_emoji=":white_check_mark:"
+            status_title="Data refresh completed"
+            change_note="Refresh completed (change detection unavailable)"
+          else
+            status_emoji=":x:"
+            status_title="Data refresh failed"
+            change_note="Refresh failed before completion"
+          fi
+
+          export status_emoji status_title change_note short_sha
+          timestamp_utc="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          export timestamp_utc
+
+          payload="$(python3 - <<'PY'
+          import json
+          import os
+
+          status_emoji = os.getenv("status_emoji", ":information_source:")
+          status_title = os.getenv("status_title", "Data refresh update")
+          workflow_status = os.getenv("WORKFLOW_STATUS", "unknown")
+          change_note = os.getenv("change_note", "n/a")
+          short_sha = os.getenv("short_sha", "unknown")
+          repo = os.getenv("REPOSITORY", "unknown")
+          ref_name = os.getenv("REF_NAME", "unknown")
+          event_name = os.getenv("EVENT_NAME", "unknown")
+          actor = os.getenv("ACTOR", "unknown")
+          workflow_name = os.getenv("WORKFLOW_NAME", "unknown")
+          run_number = os.getenv("RUN_NUMBER", "unknown")
+          run_attempt = os.getenv("RUN_ATTEMPT", "1")
+          run_url = os.getenv("RUN_URL", "")
+          timestamp_utc = os.getenv("timestamp_utc", "")
+
+          payload = {
+              "text": f"{status_emoji} {workflow_name}: {workflow_status}",
+              "blocks": [
+                  {
+                      "type": "header",
+                      "text": {"type": "plain_text", "text": f"{status_emoji} {status_title}", "emoji": True},
+                  },
+                  {
+                      "type": "section",
+                      "fields": [
+                          {"type": "mrkdwn", "text": f"*Workflow:*\n{workflow_name}"},
+                          {"type": "mrkdwn", "text": f"*Status:*\n`{workflow_status}`"},
+                          {"type": "mrkdwn", "text": f"*Repository:*\n`{repo}`"},
+                          {"type": "mrkdwn", "text": f"*Branch:*\n`{ref_name}`"},
+                          {"type": "mrkdwn", "text": f"*Triggered by:*\n`{event_name}`"},
+                          {"type": "mrkdwn", "text": f"*Actor:*\n`{actor}`"},
+                      ],
+                  },
+                  {
+                      "type": "section",
+                      "text": {
+                          "type": "mrkdwn",
+                          "text": (
+                              f"*Refresh summary:* {change_note}\n"
+                              f"*Commit SHA:* `{short_sha}`\n"
+                              f"*Run:* #{run_number} (attempt {run_attempt})\n"
+                              f"*Completed:* {timestamp_utc}"
+                          ),
+                      },
+                  },
+                  {
+                      "type": "actions",
+                      "elements": [
+                          {
+                              "type": "button",
+                              "text": {"type": "plain_text", "text": "Open GitHub Actions Run", "emoji": True},
+                              "url": run_url,
+                          }
+                      ],
+                  },
+              ],
+          }
+
+          print(json.dumps(payload, separators=(",", ":")))
+          PY
+          )"
+
+          curl -sS -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
+            || echo "Warning: Slack notification request failed."
 
       - name: Skip non-target schedule run
         if: steps.guard.outputs.run_pipeline != 'true'

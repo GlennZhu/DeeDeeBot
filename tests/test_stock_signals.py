@@ -130,3 +130,35 @@ def test_compute_stock_signal_row_insufficient_data() -> None:
     assert row["exit_death_cross_50_lt_200"] is False
     assert row["exit_rsi_overbought"] is False
     assert row["rsi_bearish_divergence"] is False
+
+
+def test_relative_strength_triggers_strong_sell_on_weakness() -> None:
+    stock = _series([200.0] * 200 + [150.0 - i for i in range(60)])
+    benchmark = _series([100.0 + i * 0.6 for i in range(260)])
+
+    row = stock_signals.compute_stock_signal_row(
+        "TEST",
+        daily_close=stock,
+        benchmark_ticker="QQQ",
+        benchmark_close=benchmark,
+    )
+
+    assert row["rs_structural_divergence"] is True
+    assert row["relative_strength_weak"] is True
+    assert row["strong_sell_weak_strength"] is True
+    assert "STRUCTURAL_DIVERGENCE" in row["relative_strength_reasons"]
+
+
+def test_relative_strength_not_weak_when_stock_outperforms() -> None:
+    stock = _series([100.0 + i for i in range(260)])
+    benchmark = _series([100.0 + i * 0.3 for i in range(260)])
+
+    row = stock_signals.compute_stock_signal_row(
+        "TEST",
+        daily_close=stock,
+        benchmark_ticker="QQQ",
+        benchmark_close=benchmark,
+    )
+
+    assert row["relative_strength_weak"] is False
+    assert row["strong_sell_weak_strength"] is False

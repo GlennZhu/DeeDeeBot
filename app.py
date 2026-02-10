@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -14,7 +14,13 @@ RAW_DATA_DIR = Path("data/raw")
 DERIVED_DATA_DIR = Path("data/derived")
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
-DEFAULT_STOCK_WATCHLIST = ["GOOG", "AVGO", "NVDA", "MSFT"]
+DEFAULT_STOCK_BENCHMARK = "QQQ"
+DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
+    {"ticker": "GOOG", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "AVGO", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "NVDA", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "MSFT", "benchmark": DEFAULT_STOCK_BENCHMARK},
+]
 
 HISTORY_OPTIONS = {
     "5Y": 5,
@@ -22,6 +28,8 @@ HISTORY_OPTIONS = {
     "15Y": 15,
     "All available": None,
 }
+
+PST = timezone(timedelta(hours=-8), name="PST")
 
 STATE_COLORS = {
     "long_environment": "#188038",
@@ -44,6 +52,7 @@ STOCK_TRIGGER_LABELS = {
     "exit_death_cross_50_lt_200": "Risk: SMA50 < SMA200",
     "exit_rsi_overbought": "Risk: RSI14 > 80",
     "rsi_bearish_divergence": "Bearish RSI Divergence",
+    "strong_sell_weak_strength": "Strong Sell: Weak Relative Strength",
 }
 
 STOCK_TRIGGER_COLORS = {
@@ -53,6 +62,7 @@ STOCK_TRIGGER_COLORS = {
     "exit_death_cross_50_lt_200": "#b3261e",
     "exit_rsi_overbought": "#b26a00",
     "rsi_bearish_divergence": "#b26a00",
+    "strong_sell_weak_strength": "#b3261e",
 }
 
 
@@ -83,6 +93,20 @@ def _format_float(value: object, digits: int = 2) -> str:
     if pd.isna(value):
         return "N/A"
     return f"{float(value):.{digits}f}"
+
+
+def _format_pst_timestamp(value: object) -> str:
+    if pd.isna(value):
+        return "N/A"
+    try:
+        ts = pd.Timestamp(value)
+    except Exception:
+        return str(value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.tz_convert(PST).strftime("%Y-%m-%d %H:%M:%S PST")
 
 
 def _signal_badge(label: str, color: str) -> str:
@@ -117,56 +141,72 @@ def _latest_mom_change(frame: pd.DataFrame) -> float | None:
     return float(clean["value"].iloc[-1] - clean["value"].iloc[-2])
 
 
-def _normalize_ticker(raw_value: str) -> str:
+def _normalize_ticker(raw_value: object) -> str:
+    if pd.isna(raw_value):
+        return ""
     return str(raw_value).strip().upper()
 
 
-def _write_watchlist(tickers: list[str]) -> None:
+def _normalize_benchmark(raw_value: object) -> str:
+    clean = _normalize_ticker(str(raw_value))
+    return clean or DEFAULT_STOCK_BENCHMARK
+
+
+def _normalize_watchlist_rows(rows: list[dict[str, object]]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
     seen: set[str] = set()
-    ordered: list[str] = []
-    for raw in tickers:
-        ticker = _normalize_ticker(raw)
+    for row in rows:
+        ticker = _normalize_ticker(str(row.get("ticker", "")))
+        benchmark = _normalize_benchmark(row.get("benchmark", DEFAULT_STOCK_BENCHMARK))
         if not ticker or ticker in seen:
             continue
         seen.add(ticker)
-        ordered.append(ticker)
+        out.append({"ticker": ticker, "benchmark": benchmark})
+    return out
 
+
+def _write_watchlist(rows: list[dict[str, object]]) -> None:
     STOCK_WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame({"ticker": ordered}).to_csv(STOCK_WATCHLIST_PATH, index=False)
+    normalized = _normalize_watchlist_rows(rows)
+    pd.DataFrame(normalized, columns=["ticker", "benchmark"]).to_csv(STOCK_WATCHLIST_PATH, index=False)
 
 
-def _load_or_initialize_watchlist() -> list[str]:
+def _load_or_initialize_watchlist() -> pd.DataFrame:
     if not STOCK_WATCHLIST_PATH.exists():
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return list(DEFAULT_STOCK_WATCHLIST)
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
     try:
         frame = pd.read_csv(STOCK_WATCHLIST_PATH)
     except Exception:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return list(DEFAULT_STOCK_WATCHLIST)
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
     if "ticker" not in frame.columns:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return list(DEFAULT_STOCK_WATCHLIST)
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
-    tickers: list[str] = []
-    seen: set[str] = set()
-    for raw in frame["ticker"].tolist():
-        ticker = _normalize_ticker(raw)
-        if not ticker or ticker in seen:
-            continue
-        seen.add(ticker)
-        tickers.append(ticker)
+    records = frame.to_dict(orient="records")
+    for row in records:
+        row.setdefault("benchmark", DEFAULT_STOCK_BENCHMARK)
 
-    if not tickers:
+    normalized = _normalize_watchlist_rows(records)
+    if not normalized:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return list(DEFAULT_STOCK_WATCHLIST)
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
-    if tickers != frame["ticker"].astype(str).tolist():
-        _write_watchlist(tickers)
+    normalized_frame = pd.DataFrame(normalized, columns=["ticker", "benchmark"])
+    current_subset = frame.copy()
+    if "benchmark" not in current_subset.columns:
+        current_subset["benchmark"] = DEFAULT_STOCK_BENCHMARK
+    current_subset = current_subset[["ticker", "benchmark"]]
+    current_subset["ticker"] = current_subset["ticker"].map(_normalize_ticker)
+    current_subset["benchmark"] = current_subset["benchmark"].map(_normalize_benchmark)
 
-    return tickers
+    if not normalized_frame.equals(current_subset.reset_index(drop=True)):
+        _write_watchlist(normalized)
+
+    return normalized_frame
 
 
 def _as_bool(raw_value: object) -> bool:
@@ -189,10 +229,10 @@ def _render_macro_tab(selected_window: str) -> None:
 
     if "last_updated_utc" in snapshot.columns and not snapshot["last_updated_utc"].dropna().empty:
         last_update = snapshot["last_updated_utc"].dropna().max()
-        st.info(f"Last successful macro update (UTC): {last_update}")
+        st.info(f"Last successful macro update (PST): {_format_pst_timestamp(last_update)}")
     elif "last_updated_utc" in signals.columns and not signals["last_updated_utc"].dropna().empty:
         last_update = signals["last_updated_utc"].dropna().max()
-        st.info(f"Last successful macro update (UTC): {last_update}")
+        st.info(f"Last successful macro update (PST): {_format_pst_timestamp(last_update)}")
 
     available_keys = set(snapshot["metric_key"].unique()) if "metric_key" in snapshot.columns else set()
     missing = [key for key in METRIC_ORDER if key not in available_keys]
@@ -283,36 +323,8 @@ def _render_macro_tab(selected_window: str) -> None:
 
 
 def _render_stock_tab() -> None:
-    st.subheader("Watchlist Management")
     watchlist = _load_or_initialize_watchlist()
-
-    with st.form("add_ticker_form", clear_on_submit=True):
-        add_ticker = st.text_input("Add ticker", placeholder="e.g., AAPL")
-        add_submitted = st.form_submit_button("Add")
-    if add_submitted:
-        ticker = _normalize_ticker(add_ticker)
-        if not ticker:
-            st.warning("Ticker cannot be empty.")
-        elif ticker in watchlist:
-            st.info(f"{ticker} is already in the watchlist.")
-        else:
-            watchlist.append(ticker)
-            _write_watchlist(watchlist)
-            st.success(f"Added {ticker}.")
-            st.rerun()
-
-    if watchlist:
-        with st.form("remove_ticker_form"):
-            remove_ticker = st.selectbox("Remove ticker", options=watchlist)
-            remove_submitted = st.form_submit_button("Remove")
-        if remove_submitted:
-            updated = [ticker for ticker in watchlist if ticker != remove_ticker]
-            _write_watchlist(updated)
-            st.success(f"Removed {remove_ticker}.")
-            st.rerun()
-
-    st.caption("Current watchlist")
-    st.dataframe(pd.DataFrame({"ticker": watchlist}), hide_index=True, use_container_width=True)
+    st.caption("Watchlist editing is disabled in UI. Update `data/derived/stock_watchlist.csv` to change tickers/benchmarks.")
 
     stock_signals = _load_csv(STOCK_SIGNALS_PATH, ["as_of_date", "last_updated_utc"])
     st.subheader("Latest Watchlist Signals")
@@ -322,15 +334,22 @@ def _render_stock_tab() -> None:
         return
 
     if "last_updated_utc" in stock_signals.columns and not stock_signals["last_updated_utc"].dropna().empty:
-        st.info(f"Last successful stock update (UTC): {stock_signals['last_updated_utc'].dropna().max()}")
+        st.info(
+            "Last successful stock update (PST): "
+            f"{_format_pst_timestamp(stock_signals['last_updated_utc'].dropna().max())}"
+        )
 
     stock_signals["ticker"] = stock_signals["ticker"].astype(str).str.upper()
+    if "benchmark_ticker" in stock_signals.columns:
+        stock_signals["benchmark_ticker"] = stock_signals["benchmark_ticker"].astype(str).str.upper()
     signal_by_ticker = {row["ticker"]: row for _, row in stock_signals.iterrows()}
 
     card_cols = st.columns(2)
-    for idx, ticker in enumerate(watchlist):
+    for idx, watch_row in watchlist.iterrows():
+        ticker = str(watch_row["ticker"])
+        benchmark = str(watch_row["benchmark"])
         card = card_cols[idx % 2]
-        card.subheader(ticker)
+        card.subheader(f"{ticker} vs {benchmark}")
         row = signal_by_ticker.get(ticker)
         if row is None:
             card.caption("No computed data for this ticker yet.")
@@ -347,6 +366,16 @@ def _render_stock_tab() -> None:
                 f"RSI14: {_format_float(row.get('rsi14'), 2)}"
             )
         )
+        card.caption(
+            (
+                f"Benchmark: {row.get('benchmark_ticker', benchmark)} | "
+                f"RS ratio: {_format_float(row.get('rs_ratio'), 4)} | "
+                f"RS MA20: {_format_float(row.get('rs_ratio_ma20'), 4)} | "
+                f"Alpha 1M: {_format_float(row.get('alpha_1m'), 4)}"
+            )
+        )
+        if "relative_strength_reasons" in row and pd.notna(row.get("relative_strength_reasons")):
+            card.caption(f"RS reasons: {row.get('relative_strength_reasons')}")
 
         active_badges: list[str] = []
         for trigger_col, label in STOCK_TRIGGER_LABELS.items():
@@ -364,6 +393,7 @@ def _render_stock_tab() -> None:
 
     display_columns = [
         "ticker",
+        "benchmark_ticker",
         "as_of_date",
         "price",
         "sma14",
@@ -371,12 +401,23 @@ def _render_stock_tab() -> None:
         "sma100",
         "sma200",
         "rsi14",
+        "benchmark_price",
+        "benchmark_sma50",
+        "rs_ratio",
+        "rs_ratio_ma20",
+        "alpha_1m",
+        "rs_structural_divergence",
+        "rs_trend_down",
+        "rs_negative_alpha",
+        "relative_strength_weak",
+        "relative_strength_reasons",
         "entry_bullish_alignment",
         "exit_price_below_sma50",
         "exit_death_cross_50_lt_100",
         "exit_death_cross_50_lt_200",
         "exit_rsi_overbought",
         "rsi_bearish_divergence",
+        "strong_sell_weak_strength",
         "status",
         "status_message",
         "last_updated_utc",
@@ -384,9 +425,14 @@ def _render_stock_tab() -> None:
 
     existing_columns = [col for col in display_columns if col in stock_signals.columns]
     preview = stock_signals[existing_columns].copy()
-    for col in ["price", "sma14", "sma50", "sma100", "sma200", "rsi14"]:
+    for col in ["price", "sma14", "sma50", "sma100", "sma200", "rsi14", "benchmark_price", "benchmark_sma50"]:
         if col in preview.columns:
             preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v), 2))
+    for col in ["rs_ratio", "rs_ratio_ma20", "alpha_1m"]:
+        if col in preview.columns:
+            preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v), 4))
+    if "last_updated_utc" in preview.columns:
+        preview["last_updated_utc"] = preview["last_updated_utc"].apply(_format_pst_timestamp)
 
     st.caption("Signals table")
     st.dataframe(preview.sort_values("ticker"), hide_index=True, use_container_width=True)
@@ -397,9 +443,8 @@ def main() -> None:
     st.title("Macro + Stock Signal Monitor")
     st.caption("Data source: cached CSV generated by GitHub Actions. No live API calls at page load.")
 
-    st.sidebar.header("Controls")
-    selected_window = st.sidebar.radio("Macro History Range", list(HISTORY_OPTIONS.keys()), index=2)
-    if st.sidebar.button("Refresh Cached Data"):
+    selected_window = "15Y"
+    if st.button("Refresh Cached Data"):
         st.cache_data.clear()
         st.rerun()
 

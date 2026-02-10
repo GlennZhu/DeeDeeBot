@@ -19,7 +19,7 @@ Dashboard and pipeline that track:
 - `app.py`: Streamlit dashboard with tabs (`Macro Monitor`, `Stock Watchlist`)
 - `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord first-trigger alerts
 - `src/signals.py`: macro signal logic and thresholds
-- `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence)
+- `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence/relative strength)
 - `src/data_fetch.py`: FRED and Stooq fetchers (daily + intraday quote endpoint)
 - `data/raw/*.csv`: per-metric historical macro series cache
 - `data/derived/metric_snapshot.csv`: latest macro values
@@ -45,6 +45,12 @@ For each watched ticker, the pipeline checks:
 - Latest two confirmed price highs `P1`, `P2` with corresponding RSI highs `R1`, `R2`
 - Trigger when `P2 > P1` and `R2 < R1`
 
+4. Comparative relative strength vs benchmark (`benchmark` per ticker in watchlist):
+- Structural divergence: benchmark `> MA50` while stock `< MA50`
+- RS trend: `RS_Ratio = Stock / Benchmark`, warning when `RS_Ratio < MA20(RS_Ratio)`
+- 1M alpha: `stock_21d_return - benchmark_21d_return`
+- **Strong sell trigger** when weakness is confirmed (`structural_divergence` or `alpha_1m < -5%`)
+
 Alerts are sent to Discord only on first trigger (`false -> true` versus previous run).
 Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
 
@@ -52,10 +58,17 @@ Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq 
 
 If `data/derived/stock_watchlist.csv` does not exist, it is initialized with:
 
-- `GOOG`
-- `AVGO`
-- `NVDA`
-- `MSFT`
+- `GOOG,QQQ`
+- `AVGO,QQQ`
+- `NVDA,QQQ`
+- `MSFT,QQQ`
+
+Watchlist schema:
+
+- `ticker`
+- `benchmark`
+
+Watchlist editing is disabled in the Streamlit UI; edit `data/derived/stock_watchlist.csv` directly.
 
 ## Local Setup
 
@@ -97,5 +110,9 @@ Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded a
 
 - `30 23 * * 1-5`
 - `30 0 * * 2-6`
+
+Notifications:
+
+- Set `SLACK_WEBHOOK_URL` as a GitHub repository secret to receive Slack notifications after each refresh run.
 
 `workflow_dispatch` remains available for manual runs.
