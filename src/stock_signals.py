@@ -32,6 +32,8 @@ STOCK_SIGNAL_COLUMNS = [
     "benchmark_ticker",
     "as_of_date",
     "price",
+    "day_change",
+    "day_change_pct",
     "intraday_quote_timestamp_utc",
     "intraday_quote_age_seconds",
     "intraday_quote_source",
@@ -318,6 +320,13 @@ def compute_stock_signal_row(
         prev_sma100 = float(sma100_series.iloc[-2]) if len(sma100_series) >= 2 else float("nan")
         prev_sma200 = float(sma200_series.iloc[-2]) if len(sma200_series) >= 2 else float("nan")
 
+    day_change = float("nan")
+    day_change_pct = float("nan")
+    if _is_valid_number(prev_price):
+        day_change = float(price) - float(prev_price)
+        if float(prev_price) != 0:
+            day_change_pct = float(day_change) / float(prev_price)
+
     entry_bullish_alignment = _safe_gt(sma14, sma50) and (_safe_gt(sma50, sma100) or _safe_gt(sma50, sma200))
     exit_price_below_sma50 = _safe_lt(price, sma50)
     exit_death_cross_50_lt_100 = _safe_lt(sma50, sma100)
@@ -434,6 +443,8 @@ def compute_stock_signal_row(
         "benchmark_ticker": str(relative.get("benchmark_ticker", benchmark_ticker)).upper(),
         "as_of_date": as_of.date().isoformat(),
         "price": price,
+        "day_change": day_change,
+        "day_change_pct": day_change_pct,
         "intraday_quote_timestamp_utc": None,
         "intraday_quote_age_seconds": None,
         "intraday_quote_source": None,

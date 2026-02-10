@@ -108,6 +108,12 @@ def _format_ratio_pct(value: object, digits: int = 2) -> str:
     return f"{float(value) * 100:.{digits}f}%"
 
 
+def _format_price_delta(change: object, change_pct: object, digits: int = 2) -> str | None:
+    if pd.isna(change) or pd.isna(change_pct):
+        return None
+    return f"{float(change):+.{digits}f} ({float(change_pct) * 100:+.{digits}f}%)"
+
+
 def _format_pst_timestamp(value: object) -> str:
     if pd.isna(value):
         return "N/A"
@@ -373,7 +379,11 @@ def _render_stock_tab() -> None:
             card.caption("No computed data for this ticker yet.")
             continue
 
-        card.metric("Price", _format_float(row.get("price"), 2))
+        price_delta = _format_price_delta(row.get("day_change"), row.get("day_change_pct"))
+        if price_delta is None:
+            card.metric("Price", _format_float(row.get("price"), 2))
+        else:
+            card.metric("Price", _format_float(row.get("price"), 2), delta=price_delta)
         card.caption(
             (
                 f"As of: {row.get('as_of_date', 'N/A')} | "
@@ -427,6 +437,8 @@ def _render_stock_tab() -> None:
         "benchmark_ticker",
         "as_of_date",
         "price",
+        "day_change",
+        "day_change_pct",
         "intraday_quote_timestamp_utc",
         "intraday_quote_age_seconds",
         "intraday_quote_source",
@@ -466,9 +478,13 @@ def _render_stock_tab() -> None:
 
     existing_columns = [col for col in display_columns if col in stock_signals.columns]
     preview = stock_signals[existing_columns].copy()
-    for col in ["price", "sma14", "sma50", "sma100", "sma200", "rsi14", "benchmark_price", "benchmark_sma50"]:
+    for col in ["price", "day_change", "sma14", "sma50", "sma100", "sma200", "rsi14", "benchmark_price", "benchmark_sma50"]:
         if col in preview.columns:
             preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v), 2))
+    if "day_change_pct" in preview.columns:
+        preview["day_change_pct"] = preview["day_change_pct"].apply(
+            lambda v: None if pd.isna(v) else round(float(v) * 100, 2)
+        )
     for col in ["rs_ratio", "rs_ratio_ma20", "alpha_1m"]:
         if col in preview.columns:
             preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v), 4))

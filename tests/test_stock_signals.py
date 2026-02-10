@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from src import stock_signals
 
@@ -226,3 +227,22 @@ def test_squat_signals_blocked_without_bull_market_precondition() -> None:
     assert row["squat_ambush_near_ma100_or_ma200"] is False
     assert row["squat_dca_below_ma100"] is False
     assert row["squat_last_stand_ma200"] is False
+
+
+def test_day_change_uses_intraday_price_when_available() -> None:
+    closes = _series([100.0 + i for i in range(260)])
+    row = stock_signals.compute_stock_signal_row("TEST", closes, latest_price=400.0)
+
+    previous_close = float(closes.iloc[-1])
+    assert row["day_change"] == pytest.approx(400.0 - previous_close)
+    assert row["day_change_pct"] == pytest.approx((400.0 - previous_close) / previous_close)
+
+
+def test_day_change_uses_latest_two_daily_closes_without_intraday() -> None:
+    closes = _series([100.0 + i for i in range(260)])
+    row = stock_signals.compute_stock_signal_row("TEST", closes)
+
+    latest_close = float(closes.iloc[-1])
+    previous_close = float(closes.iloc[-2])
+    assert row["day_change"] == pytest.approx(latest_close - previous_close)
+    assert row["day_change_pct"] == pytest.approx((latest_close - previous_close) / previous_close)

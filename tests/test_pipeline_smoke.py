@@ -124,6 +124,8 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "ticker",
         "as_of_date",
         "price",
+        "day_change",
+        "day_change_pct",
         "intraday_quote_timestamp_utc",
         "intraday_quote_age_seconds",
         "intraday_quote_source",
