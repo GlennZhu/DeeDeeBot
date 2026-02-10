@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+DEFAULT_BENCHMARK_TICKER = "QQQ"
+
 STOCK_TRIGGER_COLUMNS = [
     "entry_bullish_alignment",
     "exit_price_below_sma50",
@@ -256,11 +258,19 @@ def compute_stock_signal_row(
     ticker: str,
     daily_close: pd.Series,
     latest_price: float | None = None,
-    benchmark_ticker: str = "QQQ",
+    benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
     benchmark_close: pd.Series | None = None,
     benchmark_latest_price: float | None = None,
 ) -> dict[str, Any]:
     """Compute one watchlist signal row from daily closes and optional intraday prices."""
+    requested_benchmark = str(benchmark_ticker).strip().upper()
+    benchmark_ticker = DEFAULT_BENCHMARK_TICKER
+
+    # Benchmark is intentionally fixed to QQQ for all tickers.
+    if requested_benchmark and requested_benchmark != benchmark_ticker:
+        benchmark_close = None
+        benchmark_latest_price = None
+
     clean = _clean_price_series(daily_close)
     if clean.empty:
         raise ValueError("Daily close series is empty after cleaning.")

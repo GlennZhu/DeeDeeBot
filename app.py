@@ -14,12 +14,11 @@ RAW_DATA_DIR = Path("data/raw")
 DERIVED_DATA_DIR = Path("data/derived")
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
-DEFAULT_STOCK_BENCHMARK = "QQQ"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
-    {"ticker": "GOOG", "benchmark": DEFAULT_STOCK_BENCHMARK},
-    {"ticker": "AVGO", "benchmark": DEFAULT_STOCK_BENCHMARK},
-    {"ticker": "NVDA", "benchmark": DEFAULT_STOCK_BENCHMARK},
-    {"ticker": "MSFT", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "GOOG"},
+    {"ticker": "AVGO"},
+    {"ticker": "NVDA"},
+    {"ticker": "MSFT"},
 ]
 
 HISTORY_OPTIONS = {
@@ -163,63 +162,50 @@ def _normalize_ticker(raw_value: object) -> str:
     return str(raw_value).strip().upper()
 
 
-def _normalize_benchmark(raw_value: object) -> str:
-    clean = _normalize_ticker(str(raw_value))
-    return clean or DEFAULT_STOCK_BENCHMARK
-
-
 def _normalize_watchlist_rows(rows: list[dict[str, object]]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     seen: set[str] = set()
     for row in rows:
         ticker = _normalize_ticker(str(row.get("ticker", "")))
-        benchmark = _normalize_benchmark(row.get("benchmark", DEFAULT_STOCK_BENCHMARK))
         if not ticker or ticker in seen:
             continue
         seen.add(ticker)
-        out.append({"ticker": ticker, "benchmark": benchmark})
+        out.append({"ticker": ticker})
     return out
 
 
 def _write_watchlist(rows: list[dict[str, object]]) -> None:
     STOCK_WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_watchlist_rows(rows)
-    pd.DataFrame(normalized, columns=["ticker", "benchmark"]).to_csv(STOCK_WATCHLIST_PATH, index=False)
+    pd.DataFrame(normalized, columns=["ticker"]).to_csv(STOCK_WATCHLIST_PATH, index=False)
 
 
 def _load_or_initialize_watchlist() -> pd.DataFrame:
     if not STOCK_WATCHLIST_PATH.exists():
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
 
     try:
         frame = pd.read_csv(STOCK_WATCHLIST_PATH)
     except Exception:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
 
     if "ticker" not in frame.columns:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
 
     records = frame.to_dict(orient="records")
-    for row in records:
-        row.setdefault("benchmark", DEFAULT_STOCK_BENCHMARK)
-
     normalized = _normalize_watchlist_rows(records)
     if not normalized:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
 
-    normalized_frame = pd.DataFrame(normalized, columns=["ticker", "benchmark"])
-    current_subset = frame.copy()
-    if "benchmark" not in current_subset.columns:
-        current_subset["benchmark"] = DEFAULT_STOCK_BENCHMARK
-    current_subset = current_subset[["ticker", "benchmark"]]
+    normalized_frame = pd.DataFrame(normalized, columns=["ticker"])
+    current_subset = frame[["ticker"]].copy()
     current_subset["ticker"] = current_subset["ticker"].map(_normalize_ticker)
-    current_subset["benchmark"] = current_subset["benchmark"].map(_normalize_benchmark)
 
-    if not normalized_frame.equals(current_subset.reset_index(drop=True)):
+    if set(frame.columns) != {"ticker"} or not normalized_frame.equals(current_subset.reset_index(drop=True)):
         _write_watchlist(normalized)
 
     return normalized_frame
@@ -340,7 +326,7 @@ def _render_macro_tab(selected_window: str) -> None:
 
 def _render_stock_tab() -> None:
     watchlist = _load_or_initialize_watchlist()
-    st.caption("Watchlist editing is disabled in UI. Update `data/derived/stock_watchlist.csv` to change tickers/benchmarks.")
+    st.caption("Watchlist editing is disabled in UI. Update `data/derived/stock_watchlist.csv` to change tickers.")
 
     stock_signals = _load_csv(
         STOCK_SIGNALS_PATH,
@@ -366,9 +352,8 @@ def _render_stock_tab() -> None:
     card_cols = st.columns(2)
     for idx, watch_row in watchlist.iterrows():
         ticker = str(watch_row["ticker"])
-        benchmark = str(watch_row["benchmark"])
         card = card_cols[idx % 2]
-        card.subheader(f"{ticker} vs {benchmark}")
+        card.subheader(ticker)
         row = signal_by_ticker.get(ticker)
         if row is None:
             card.caption("No computed data for this ticker yet.")
@@ -387,7 +372,6 @@ def _render_stock_tab() -> None:
         )
         card.caption(
             (
-                f"Benchmark: {row.get('benchmark_ticker', benchmark)} | "
                 f"RS ratio: {_format_float(row.get('rs_ratio'), 4)} | "
                 f"RS MA20: {_format_float(row.get('rs_ratio_ma20'), 4)} | "
                 f"Alpha 1M: {_format_float(row.get('alpha_1m'), 4)}"
