@@ -76,6 +76,15 @@ THRESHOLD_LABELS: dict[str, str] = {
     "unemployment_mom_gte_0_2": "Unemployment MoM >= 0.2",
 }
 
+NEGATIVE_MACRO_THRESHOLD_IDS: set[str] = {
+    "hiring_rate_lte_3_4",
+    "ten_year_yield_gte_4_4",
+    "ten_year_yield_gte_5_0",
+    "buffett_ratio_gte_2_0",
+    "unemployment_mom_gte_0_1",
+    "unemployment_mom_gte_0_2",
+}
+
 STOCK_TRIGGER_LABELS: dict[str, str] = {
     "entry_bullish_alignment": "Entry signal: bullish alignment",
     "exit_price_below_sma50": "Hard sell: price < SMA50",
@@ -87,6 +96,17 @@ STOCK_TRIGGER_LABELS: dict[str, str] = {
     "squat_ambush_near_ma100_or_ma200": "🟢 Approaching Buy Zone: Price is near MA100/200.",
     "squat_dca_below_ma100": "🔵 Price Broken MA100: Activate DCA Mode.",
     "squat_last_stand_ma200": "⚠️ Critical Support: Testing MA200.",
+}
+
+NEGATIVE_STOCK_TRIGGER_IDS: set[str] = {
+    "exit_price_below_sma50",
+    "exit_death_cross_50_lt_100",
+    "exit_death_cross_50_lt_200",
+    "exit_rsi_overbought",
+    "rsi_bearish_divergence",
+    "strong_sell_weak_strength",
+    "squat_dca_below_ma100",
+    "squat_last_stand_ma200",
 }
 
 
@@ -405,8 +425,12 @@ def _detect_new_threshold_events(previous: pd.DataFrame, current: pd.DataFrame) 
             continue
 
         current_thresholds = _thresholds_for_state(metric_key, signal_state)
-        newly_triggered = sorted(current_thresholds - prev_thresholds.get(metric_key, set()))
-        if not newly_triggered:
+        previous_metric_thresholds = prev_thresholds.get(metric_key, set())
+        newly_triggered = sorted(current_thresholds - previous_metric_thresholds)
+        newly_cleared_negative = sorted(
+            (previous_metric_thresholds - current_thresholds) & NEGATIVE_MACRO_THRESHOLD_IDS
+        )
+        if not newly_triggered and not newly_cleared_negative:
             continue
 
         events.append(
@@ -419,6 +443,8 @@ def _detect_new_threshold_events(previous: pd.DataFrame, current: pd.DataFrame) 
                 "prev_signal_state": prev_states.get(metric_key, "unknown"),
                 "new_threshold_ids": newly_triggered,
                 "new_threshold_labels": [THRESHOLD_LABELS.get(tid, tid) for tid in newly_triggered],
+                "cleared_threshold_ids": newly_cleared_negative,
+                "cleared_threshold_labels": [THRESHOLD_LABELS.get(tid, tid) for tid in newly_cleared_negative],
             }
         )
 
@@ -460,19 +486,26 @@ def _detect_new_stock_trigger_events(previous: pd.DataFrame, current: pd.DataFra
         for trigger_id in STOCK_TRIGGER_COLUMNS:
             current_state = _as_bool(row.get(trigger_id))
             previous_state = previous_map.get((ticker, trigger_id), False)
-            if not current_state or previous_state:
+            event_type: str | None = None
+            if current_state and not previous_state:
+                event_type = "triggered"
+            elif previous_state and not current_state and trigger_id in NEGATIVE_STOCK_TRIGGER_IDS:
+                event_type = "cleared"
+            if event_type is None:
                 continue
 
+            raw_reasons = row.get("relative_strength_reasons", "")
             events.append(
                 {
                     "ticker": ticker,
                     "benchmark_ticker": _normalize_benchmark(row.get("benchmark_ticker", DEFAULT_STOCK_BENCHMARK)),
                     "trigger_id": trigger_id,
                     "trigger_label": STOCK_TRIGGER_LABELS.get(trigger_id, trigger_id),
+                    "event_type": event_type,
                     "as_of_date": str(row.get("as_of_date", "unknown")),
                     "price": row.get("price"),
                     "status": str(row.get("status", "")),
-                    "relative_strength_reasons": str(row.get("relative_strength_reasons", "")),
+                    "relative_strength_reasons": "" if pd.isna(raw_reasons) else str(raw_reasons),
                 }
             )
 
@@ -480,12 +513,17 @@ def _detect_new_stock_trigger_events(previous: pd.DataFrame, current: pd.DataFra
 
 
 def _build_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
-    lines = [f"Macro threshold trigger alert ({now_iso})"]
+    lines = [f"Macro threshold state alert ({now_iso})"]
     for event in events:
-        threshold_labels = ", ".join(event["new_threshold_labels"])
+        changes: list[str] = []
+        if event["new_threshold_labels"]:
+            changes.append(f"triggered: {', '.join(event['new_threshold_labels'])}")
+        if event["cleared_threshold_labels"]:
+            changes.append(f"cleared: {', '.join(event['cleared_threshold_labels'])}")
+        threshold_changes = "; ".join(changes)
         lines.append(
             (
-                f"- {event['metric_name']} ({event['metric_key']}): {threshold_labels} triggered; "
+                f"- {event['metric_name']} ({event['metric_key']}): {threshold_changes}; "
                 f"state {event['prev_signal_state']} -> {event['signal_state']}; "
                 f"value={_value_for_message(event['value'])}; as_of={event['as_of_date']}"
             )
@@ -497,11 +535,16 @@ def _build_stock_discord_message(events: list[dict[str, Any]], now_iso: str) -> 
     lines = [f"Stock watchlist trigger alert ({now_iso})"]
     for event in events:
         reason_suffix = ""
-        if event.get("trigger_id") == "strong_sell_weak_strength" and event.get("relative_strength_reasons"):
+        if (
+            event.get("event_type") == "triggered"
+            and event.get("trigger_id") == "strong_sell_weak_strength"
+            and event.get("relative_strength_reasons")
+        ):
             reason_suffix = f"; rs_reasons={event['relative_strength_reasons']}"
+        action = "triggered" if event.get("event_type") == "triggered" else "cleared"
         lines.append(
             (
-                f"- {event['ticker']} vs {event['benchmark_ticker']}: {event['trigger_label']} triggered; "
+                f"- {event['ticker']} vs {event['benchmark_ticker']}: {event['trigger_label']} {action}; "
                 f"price={_value_for_message(event['price'])}; "
                 f"as_of={event['as_of_date']}; status={event['status']}{reason_suffix}"
             )

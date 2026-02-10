@@ -59,7 +59,7 @@ For each watched ticker, the pipeline checks:
 - **DCA alert** (`🔵 Price Broken MA100`) when price crosses below MA100
 - **Last-stand alert** (`⚠️ Critical Support`) when price tests MA200
 
-Alerts are sent to Discord only on first trigger (`false -> true` versus previous run).
+Alerts are sent to Discord on first trigger (`false -> true` versus previous run), and when negative signals clear (`true -> false` for risk/exit macro and stock conditions).
 Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
 `stock_signals_latest.csv` also includes `intraday_quote_timestamp_utc` and `intraday_quote_age_seconds` so quote staleness is explicit.
 

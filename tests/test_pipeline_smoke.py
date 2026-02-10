@@ -218,6 +218,52 @@ def test_detect_new_threshold_events_flags_only_new_trigger() -> None:
     assert by_metric["hiring_rate"]["new_threshold_ids"] == ["hiring_rate_lte_3_4"]
 
 
+def test_detect_new_threshold_events_includes_negative_clears_only() -> None:
+    previous = pd.DataFrame(
+        [
+            {
+                "metric_key": "ten_year_yield",
+                "metric_name": "10Y Treasury Yield",
+                "signal_state": "extreme_pressure_bond_opportunity",
+                "value": 5.1,
+                "as_of_date": "2026-02-01",
+            },
+            {
+                "metric_key": "m2",
+                "metric_name": "M2 Money Supply",
+                "signal_state": "long_environment",
+                "value": 100.0,
+                "as_of_date": "2026-02-01",
+            },
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            {
+                "metric_key": "ten_year_yield",
+                "metric_name": "10Y Treasury Yield",
+                "signal_state": "equity_pressure_zone",
+                "value": 4.8,
+                "as_of_date": "2026-02-02",
+            },
+            {
+                "metric_key": "m2",
+                "metric_name": "M2 Money Supply",
+                "signal_state": "caution_contraction",
+                "value": 99.0,
+                "as_of_date": "2026-02-02",
+            },
+        ]
+    )
+
+    events = pipeline._detect_new_threshold_events(previous, current)
+
+    assert len(events) == 1
+    assert events[0]["metric_key"] == "ten_year_yield"
+    assert events[0]["new_threshold_ids"] == []
+    assert events[0]["cleared_threshold_ids"] == ["ten_year_yield_gte_5_0"]
+
+
 def test_detect_new_stock_trigger_events_flags_false_to_true_only() -> None:
     previous = pd.DataFrame(
         [
@@ -250,6 +296,35 @@ def test_detect_new_stock_trigger_events_flags_false_to_true_only() -> None:
     trigger_ids = sorted(event["trigger_id"] for event in events)
 
     assert trigger_ids == ["entry_bullish_alignment", "rsi_bearish_divergence"]
+
+
+def test_detect_new_stock_trigger_events_includes_negative_clear_only() -> None:
+    previous = pd.DataFrame(
+        [
+            _stock_row(
+                "GOOG",
+                entry_bullish_alignment=True,
+                exit_price_below_sma50=True,
+                squat_ambush_near_ma100_or_ma200=True,
+            )
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            _stock_row(
+                "GOOG",
+                entry_bullish_alignment=False,
+                exit_price_below_sma50=False,
+                squat_ambush_near_ma100_or_ma200=False,
+            )
+        ]
+    )
+
+    events = pipeline._detect_new_stock_trigger_events(previous, current)
+
+    assert len(events) == 1
+    assert events[0]["trigger_id"] == "exit_price_below_sma50"
+    assert events[0]["event_type"] == "cleared"
 
 
 def test_notify_new_thresholds_posts_to_discord(monkeypatch) -> None:
@@ -290,6 +365,47 @@ def test_notify_new_thresholds_posts_to_discord(monkeypatch) -> None:
     assert payload["url"] == "https://example.com/webhook"
     assert "Hiring Rate" in payload["content"]
     assert "Hiring rate <= 3.4" in payload["content"]
+
+
+def test_notify_new_thresholds_posts_clear_to_discord(monkeypatch) -> None:
+    previous = pd.DataFrame(
+        [
+            {
+                "metric_key": "hiring_rate",
+                "metric_name": "Hiring Rate",
+                "signal_state": "recession_alert",
+                "value": 3.4,
+                "as_of_date": "2026-02-01",
+            }
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            {
+                "metric_key": "hiring_rate",
+                "metric_name": "Hiring Rate",
+                "signal_state": "normal",
+                "value": 3.6,
+                "as_of_date": "2026-02-02",
+            }
+        ]
+    )
+
+    payload: dict[str, str] = {}
+
+    def fake_post(url: str, content: str) -> None:
+        payload["url"] = url
+        payload["content"] = content
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setattr(pipeline, "_post_discord_message", fake_post)
+
+    pipeline._notify_new_thresholds(previous, current, "2026-02-02T00:00:00Z")
+
+    assert payload["url"] == "https://example.com/webhook"
+    assert "Hiring Rate" in payload["content"]
+    assert "cleared: Hiring rate <= 3.4" in payload["content"]
+    assert "state recession_alert -> normal" in payload["content"]
 
 
 def test_notify_new_stock_triggers_posts_to_discord(monkeypatch) -> None:
@@ -334,3 +450,37 @@ def test_notify_new_stock_triggers_posts_to_discord(monkeypatch) -> None:
     assert payload["url"] == "https://example.com/webhook"
     assert "NVDA" in payload["content"]
     assert "Entry signal: bullish alignment" in payload["content"]
+
+
+def test_notify_new_stock_triggers_posts_clear_to_discord(monkeypatch) -> None:
+    previous = pd.DataFrame(
+        [
+            _stock_row(
+                "NVDA",
+                exit_price_below_sma50=True,
+            )
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            _stock_row(
+                "NVDA",
+                exit_price_below_sma50=False,
+            )
+        ]
+    )
+
+    payload: dict[str, str] = {}
+
+    def fake_post(url: str, content: str) -> None:
+        payload["url"] = url
+        payload["content"] = content
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.com/webhook")
+    monkeypatch.setattr(pipeline, "_post_discord_message", fake_post)
+
+    pipeline._notify_new_stock_triggers(previous, current, "2026-02-02T00:00:00Z")
+
+    assert payload["url"] == "https://example.com/webhook"
+    assert "NVDA" in payload["content"]
+    assert "Hard sell: price < SMA50 cleared" in payload["content"]
