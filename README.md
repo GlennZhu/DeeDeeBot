@@ -113,6 +113,6 @@ Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded a
 
 Notifications:
 
-- Set `SLACK_WEBHOOK_URL` as a GitHub repository secret to receive Slack notifications after each refresh run.
+- Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 
 `workflow_dispatch` remains available for manual runs.

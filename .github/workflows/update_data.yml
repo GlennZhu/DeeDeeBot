@@ -70,10 +70,10 @@ jobs:
             echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Notify Slack
+      - name: Notify Discord
         if: always() && steps.guard.outputs.run_pipeline == 'true'
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           WORKFLOW_STATUS: ${{ job.status }}
           WORKFLOW_NAME: ${{ github.workflow }}
           REPOSITORY: ${{ github.repository }}
@@ -86,8 +86,8 @@ jobs:
           COMMIT_SHA: ${{ steps.commit_data.outputs.commit_sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [[ -z "$SLACK_WEBHOOK_URL" ]]; then
-            echo "Warning: SLACK_WEBHOOK_URL is not set; skipping Slack notification."
+          if [[ -z "$DISCORD_WEBHOOK_URL" ]]; then
+            echo "Warning: DISCORD_WEBHOOK_URL is not set; skipping Discord notification."
             exit 0
           fi
 
@@ -98,36 +98,46 @@ jobs:
           fi
 
           if [[ "$WORKFLOW_STATUS" == "success" && "$data_changed" == "true" ]]; then
-            status_emoji=":white_check_mark:"
+            status_emoji="✅"
             status_title="Data refresh completed"
             change_note="CSV cache updated and pushed"
+            status_color=5763719
           elif [[ "$WORKFLOW_STATUS" == "success" && "$data_changed" == "false" ]]; then
-            status_emoji=":white_check_mark:"
+            status_emoji="✅"
             status_title="Data refresh completed"
             change_note="Refresh completed; no CSV changes detected"
+            status_color=5763719
           elif [[ "$WORKFLOW_STATUS" == "success" ]]; then
-            status_emoji=":white_check_mark:"
+            status_emoji="✅"
             status_title="Data refresh completed"
             change_note="Refresh completed (change detection unavailable)"
+            status_color=5763719
+          elif [[ "$WORKFLOW_STATUS" == "cancelled" ]]; then
+            status_emoji="⚠️"
+            status_title="Data refresh cancelled"
+            change_note="Refresh run was cancelled before completion"
+            status_color=15105570
           else
-            status_emoji=":x:"
+            status_emoji="❌"
             status_title="Data refresh failed"
             change_note="Refresh failed before completion"
+            status_color=15548997
           fi
 
-          export status_emoji status_title change_note short_sha
-          timestamp_utc="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          export timestamp_utc
+          timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          timestamp_pt="$(TZ=America/Los_Angeles date '+%Y-%m-%d %H:%M:%S %Z')"
+          export status_emoji status_title change_note short_sha status_color timestamp_utc timestamp_pt
 
           payload="$(python3 - <<'PY'
           import json
           import os
 
-          status_emoji = os.getenv("status_emoji", ":information_source:")
+          status_emoji = os.getenv("status_emoji", "ℹ️")
           status_title = os.getenv("status_title", "Data refresh update")
           workflow_status = os.getenv("WORKFLOW_STATUS", "unknown")
           change_note = os.getenv("change_note", "n/a")
           short_sha = os.getenv("short_sha", "unknown")
+          status_color = int(os.getenv("status_color", "3447003"))
           repo = os.getenv("REPOSITORY", "unknown")
           ref_name = os.getenv("REF_NAME", "unknown")
           event_name = os.getenv("EVENT_NAME", "unknown")
@@ -137,47 +147,30 @@ jobs:
           run_attempt = os.getenv("RUN_ATTEMPT", "1")
           run_url = os.getenv("RUN_URL", "")
           timestamp_utc = os.getenv("timestamp_utc", "")
+          timestamp_pt = os.getenv("timestamp_pt", "")
+          data_changed = os.getenv("DATA_CHANGED", "unknown")
 
           payload = {
-              "text": f"{status_emoji} {workflow_name}: {workflow_status}",
-              "blocks": [
+              "content": f"{status_emoji} **{workflow_name}** run status: `{workflow_status}`",
+              "embeds": [
                   {
-                      "type": "header",
-                      "text": {"type": "plain_text", "text": f"{status_emoji} {status_title}", "emoji": True},
-                  },
-                  {
-                      "type": "section",
+                      "title": f"{status_emoji} {status_title}",
+                      "url": run_url,
+                      "color": status_color,
+                      "description": change_note,
                       "fields": [
-                          {"type": "mrkdwn", "text": f"*Workflow:*\n{workflow_name}"},
-                          {"type": "mrkdwn", "text": f"*Status:*\n`{workflow_status}`"},
-                          {"type": "mrkdwn", "text": f"*Repository:*\n`{repo}`"},
-                          {"type": "mrkdwn", "text": f"*Branch:*\n`{ref_name}`"},
-                          {"type": "mrkdwn", "text": f"*Triggered by:*\n`{event_name}`"},
-                          {"type": "mrkdwn", "text": f"*Actor:*\n`{actor}`"},
+                          {"name": "Repository", "value": repo, "inline": True},
+                          {"name": "Branch", "value": ref_name, "inline": True},
+                          {"name": "Event", "value": event_name, "inline": True},
+                          {"name": "Actor", "value": actor, "inline": True},
+                          {"name": "Run", "value": f"#{run_number} (attempt {run_attempt})", "inline": True},
+                          {"name": "Data Changed", "value": data_changed, "inline": True},
+                          {"name": "Commit SHA", "value": short_sha, "inline": True},
+                          {"name": "Status", "value": workflow_status, "inline": True},
+                          {"name": "Completed (PT)", "value": timestamp_pt, "inline": False},
                       ],
-                  },
-                  {
-                      "type": "section",
-                      "text": {
-                          "type": "mrkdwn",
-                          "text": (
-                              f"*Refresh summary:* {change_note}\n"
-                              f"*Commit SHA:* `{short_sha}`\n"
-                              f"*Run:* #{run_number} (attempt {run_attempt})\n"
-                              f"*Completed:* {timestamp_utc}"
-                          ),
-                      },
-                  },
-                  {
-                      "type": "actions",
-                      "elements": [
-                          {
-                              "type": "button",
-                              "text": {"type": "plain_text", "text": "Open GitHub Actions Run", "emoji": True},
-                              "url": run_url,
-                          }
-                      ],
-                  },
+                      "timestamp": timestamp_utc,
+                  }
               ],
           }
 
@@ -185,8 +178,8 @@ jobs:
           PY
           )"
 
-          curl -sS -X POST -H 'Content-type: application/json' --data "$payload" "$SLACK_WEBHOOK_URL" \
-            || echo "Warning: Slack notification request failed."
+          curl -sS -X POST -H 'Content-type: application/json' --data "$payload" "$DISCORD_WEBHOOK_URL" \
+            || echo "Warning: Discord notification request failed."
 
       - name: Skip non-target schedule run
         if: steps.guard.outputs.run_pipeline != 'true'
