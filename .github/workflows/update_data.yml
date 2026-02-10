@@ -1,4 +1,4 @@
-name: Update Macro and Stock Data Cache
+name: Update Macro Data Cache
 
 on:
   schedule:
@@ -50,17 +50,17 @@ jobs:
         if: steps.guard.outputs.run_pipeline == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python -m src.pipeline
+        run: python -m src.pipeline --macro-only
 
       - name: Commit changed CSV files
         id: commit_data
         if: steps.guard.outputs.run_pipeline == 'true'
         run: |
-          if [[ -n "$(git status --porcelain data/raw data/derived)" ]]; then
+          if [[ -n "$(git status --porcelain data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/raw data/derived
-            git commit -m "chore(data): update macro and stock dashboard cache"
+            git add data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv
+            git commit -m "chore(data): update macro dashboard cache"
             git push
             echo "data_changed=true" >> "$GITHUB_OUTPUT"
             echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

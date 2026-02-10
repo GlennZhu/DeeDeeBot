@@ -16,7 +16,7 @@ from src.config import DEFAULT_LOOKBACK_YEARS, METRIC_ORDER, SERIES_CONFIG
 from src.data_fetch import (
     fetch_fred_series,
     fetch_stock_daily_history,
-    fetch_stock_intraday_latest,
+    fetch_stock_intraday_quote,
 )
 from src.signals import compute_signals
 from src.stock_signals import (
@@ -248,7 +248,7 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
         return pd.DataFrame(columns=[*STOCK_SIGNAL_COLUMNS, "last_updated_utc"])
 
     benchmark_history: dict[str, pd.Series | None] = {}
-    benchmark_intraday: dict[str, float | None] = {}
+    benchmark_intraday: dict[str, dict[str, Any] | None] = {}
     for benchmark in sorted(watchlist["benchmark"].astype(str).unique()):
         benchmark_symbol = _normalize_benchmark(benchmark)
         try:
@@ -258,7 +258,7 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
             benchmark_history[benchmark_symbol] = None
 
         try:
-            benchmark_intraday[benchmark_symbol] = fetch_stock_intraday_latest(benchmark_symbol)
+            benchmark_intraday[benchmark_symbol] = fetch_stock_intraday_quote(benchmark_symbol)
         except Exception as exc:
             print(f"Warning: failed to fetch benchmark intraday quote for {benchmark_symbol}: {exc}")
             benchmark_intraday[benchmark_symbol] = None
@@ -284,17 +284,22 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
             )
             continue
 
+        latest_quote: dict[str, Any] | None = None
         latest_price: float | None = None
         try:
-            latest_price = fetch_stock_intraday_latest(ticker)
-            if latest_price is not None:
-                daily_close.attrs["intraday_source"] = f"STOOQ_INTRADAY:{ticker}"
+            latest_quote = fetch_stock_intraday_quote(ticker)
+            if latest_quote is not None:
+                latest_price = float(latest_quote["price"])
+                quote_source = str(latest_quote.get("source", "")).strip()
+                if quote_source:
+                    daily_close.attrs["intraday_source"] = quote_source
         except Exception as exc:
             print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
 
         try:
             benchmark_close = benchmark_history.get(benchmark_ticker)
-            benchmark_price = benchmark_intraday.get(benchmark_ticker)
+            benchmark_quote = benchmark_intraday.get(benchmark_ticker)
+            benchmark_price = float(benchmark_quote["price"]) if benchmark_quote else None
             row = compute_stock_signal_row(
                 ticker=ticker,
                 daily_close=daily_close,
@@ -303,6 +308,10 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
                 benchmark_close=benchmark_close,
                 benchmark_latest_price=benchmark_price,
             )
+            if latest_quote is not None:
+                row["intraday_quote_timestamp_utc"] = latest_quote.get("quote_timestamp_utc")
+                row["intraday_quote_age_seconds"] = latest_quote.get("quote_age_seconds")
+                row["intraday_quote_source"] = latest_quote.get("source")
             row["last_updated_utc"] = now_iso
             rows.append(row)
         except Exception as exc:
@@ -543,13 +552,8 @@ def _notify_new_stock_triggers(previous: pd.DataFrame, current: pd.DataFrame, no
         print(f"Warning: failed to send stock Discord alert: {exc}")
 
 
-def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LOOKBACK_YEARS) -> None:
-    """Run full fetch-transform-signal pipeline and persist CSV artifacts."""
-    if not start_date:
-        start_date = _default_start_date(lookback_years)
+def _run_macro_pipeline(start_date: str, now_iso: str) -> None:
     previous_signals = _load_previous_signals(DERIVED_DATA_DIR / "signals_latest.csv")
-    previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
-    watchlist = _load_or_initialize_watchlist(STOCK_WATCHLIST_PATH)
 
     m2_cfg = SERIES_CONFIG["m2"]
     hiring_cfg = SERIES_CONFIG["hiring_rate"]
@@ -593,8 +597,6 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
         "unemployment_rate": _clean_series(prepare_monthly_series(unrate)),
     }
 
-    now_iso = pd.Timestamp.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-
     raw_frames = {
         key: _series_to_csv_frame(series, str(series.attrs.get("source", "unknown")))
         for key, series in metric_series.items()
@@ -611,23 +613,58 @@ def run_pipeline(start_date: str | None = None, lookback_years: int = DEFAULT_LO
 
     _write_csv(DERIVED_DATA_DIR / "metric_snapshot.csv", metric_snapshot)
     _write_csv(DERIVED_DATA_DIR / "signals_latest.csv", signals)
-    stock_signals = _compute_watchlist_signals(watchlist=watchlist, start_date=start_date, now_iso=now_iso)
-    _write_csv(STOCK_SIGNALS_PATH, stock_signals)
 
     _notify_new_thresholds(previous_signals, signals, now_iso)
+
+
+def _run_stock_pipeline(start_date: str, now_iso: str) -> None:
+    previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
+    watchlist = _load_or_initialize_watchlist(STOCK_WATCHLIST_PATH)
+    stock_signals = _compute_watchlist_signals(watchlist=watchlist, start_date=start_date, now_iso=now_iso)
+    _write_csv(STOCK_SIGNALS_PATH, stock_signals)
     _notify_new_stock_triggers(previous_stock_signals, stock_signals, now_iso)
+
+
+def run_pipeline(
+    start_date: str | None = None,
+    lookback_years: int = DEFAULT_LOOKBACK_YEARS,
+    run_macro: bool = True,
+    run_stock: bool = True,
+) -> None:
+    """Run pipeline sections and persist CSV artifacts."""
+    if not run_macro and not run_stock:
+        raise ValueError("At least one pipeline section must be enabled.")
+
+    if not start_date:
+        start_date = _default_start_date(lookback_years)
+
+    now_iso = pd.Timestamp.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    if run_macro:
+        _run_macro_pipeline(start_date=start_date, now_iso=now_iso)
+    if run_stock:
+        _run_stock_pipeline(start_date=start_date, now_iso=now_iso)
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run macro signal dashboard data pipeline.")
     parser.add_argument("--start-date", type=str, default=None, help="ISO date, e.g. 2011-01-01")
     parser.add_argument("--lookback-years", type=int, default=DEFAULT_LOOKBACK_YEARS, help="Years of history to pull")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--macro-only", action="store_true", help="Run only macro data fetch/signal steps")
+    mode_group.add_argument("--stock-only", action="store_true", help="Run only stock watchlist steps")
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    run_pipeline(start_date=args.start_date, lookback_years=args.lookback_years)
+    run_macro = not args.stock_only
+    run_stock = not args.macro_only
+    run_pipeline(
+        start_date=args.start_date,
+        lookback_years=args.lookback_years,
+        run_macro=run_macro,
+        run_stock=run_stock,
+    )
 
 
 if __name__ == "__main__":

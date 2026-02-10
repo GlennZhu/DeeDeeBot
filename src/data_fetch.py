@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
+from typing import Any
 from urllib import request
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from pandas_datareader.data import DataReader
@@ -51,6 +54,29 @@ def _stooq_symbol_candidates(raw_symbol: str) -> list[str]:
     return symbols
 
 
+def _parse_stooq_quote_timestamp(
+    quote_date_raw: str,
+    quote_time_raw: str,
+) -> datetime | None:
+    date_digits = quote_date_raw.strip()
+    time_digits = "".join(ch for ch in quote_time_raw.strip() if ch.isdigit())
+    if len(date_digits) != 8 or not date_digits.isdigit() or len(time_digits) < 6:
+        return None
+
+    try:
+        naive = datetime.strptime(f"{date_digits}{time_digits[:6]}", "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+    # Stooq quote endpoint timestamps are emitted in feed-local clock time.
+    timezone_name = "Europe/Warsaw"
+    try:
+        localized = naive.replace(tzinfo=ZoneInfo(timezone_name))
+    except Exception:
+        localized = naive.replace(tzinfo=timezone.utc)
+    return localized.astimezone(timezone.utc)
+
+
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
     """Fetch a single FRED series as a normalized pandas Series."""
     frame = DataReader(series_id, "fred", start=start_date)
@@ -89,8 +115,8 @@ def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
     raise RuntimeError(f"No daily stock data returned from Stooq for {raw_symbol}.")
 
 
-def fetch_stock_intraday_latest(ticker: str) -> float | None:
-    """Fetch latest intraday quote from Stooq quote endpoint."""
+def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
+    """Fetch latest intraday quote details from Stooq quote endpoint."""
     raw_symbol = str(ticker).strip().upper()
     if not raw_symbol:
         return None
@@ -98,6 +124,7 @@ def fetch_stock_intraday_latest(ticker: str) -> float | None:
     for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
         quote_symbol = stooq_symbol.lower()
         url = f"https://stooq.com/q/l/?s={quote_symbol}&i=1"
+        fetched_at_utc = datetime.now(timezone.utc)
 
         try:
             with request.urlopen(url, timeout=10) as response:
@@ -126,6 +153,29 @@ def fetch_stock_intraday_latest(ticker: str) -> float | None:
             continue
 
         if price > 0:
-            return price
+            quote_timestamp_utc = _parse_stooq_quote_timestamp(row[1], row[2])
+            quote_age_seconds: int | None = None
+            quote_timestamp_iso: str | None = None
+            if quote_timestamp_utc is not None:
+                quote_timestamp_iso = quote_timestamp_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+                quote_age_seconds = max(
+                    0,
+                    int((fetched_at_utc - quote_timestamp_utc).total_seconds()),
+                )
+
+            return {
+                "price": float(price),
+                "quote_timestamp_utc": quote_timestamp_iso,
+                "quote_age_seconds": quote_age_seconds,
+                "source": f"STOOQ_INTRADAY:{stooq_symbol}",
+            }
 
     return None
+
+
+def fetch_stock_intraday_latest(ticker: str) -> float | None:
+    """Fetch latest intraday quote price from Stooq quote endpoint."""
+    quote = fetch_stock_intraday_quote(ticker)
+    if not quote:
+        return None
+    return float(quote["price"])

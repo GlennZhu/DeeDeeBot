@@ -53,12 +53,30 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
             "AVGO": 140.0,
             "NVDA": 160.0,
             "MSFT": 180.0,
+            "QQQ": 200.0,
         }[ticker]
         return _series([base + i * 0.4 for i in range(260)], "2025-01-02", "D")
 
+    def fake_fetch_stock_intraday_quote(ticker: str) -> dict[str, object] | None:
+        if ticker == "NVDA":
+            return {
+                "price": 250.0,
+                "quote_timestamp_utc": "2026-02-10T21:30:00Z",
+                "quote_age_seconds": 30,
+                "source": "STOOQ_INTRADAY:NVDA.US",
+            }
+        if ticker == "QQQ":
+            return {
+                "price": 400.0,
+                "quote_timestamp_utc": "2026-02-10T21:30:00Z",
+                "quote_age_seconds": 30,
+                "source": "STOOQ_INTRADAY:QQQ.US",
+            }
+        return None
+
     monkeypatch.setattr(pipeline, "fetch_fred_series", fake_fetch_fred_series)
     monkeypatch.setattr(pipeline, "fetch_stock_daily_history", fake_fetch_stock_daily_history)
-    monkeypatch.setattr(pipeline, "fetch_stock_intraday_latest", lambda ticker: 250.0 if ticker == "NVDA" else None)
+    monkeypatch.setattr(pipeline, "fetch_stock_intraday_quote", fake_fetch_stock_intraday_quote)
 
     pipeline.run_pipeline(start_date="2024-01-01", lookback_years=15)
 
@@ -105,6 +123,9 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "ticker",
         "as_of_date",
         "price",
+        "intraday_quote_timestamp_utc",
+        "intraday_quote_age_seconds",
+        "intraday_quote_source",
         "sma14",
         "sma50",
         "sma100",

@@ -1,0 +1,79 @@
+name: Update Stock Signals Intraday
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-stock-intraday:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Evaluate Pacific market-hours guard
+        id: guard
+        shell: bash
+        run: |
+          should_run="false"
+          local_dow="manual"
+          local_hm="manual"
+          local_minutes="manual"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            should_run="true"
+          else
+            local_dow="$(TZ=America/Los_Angeles date +%u)"
+            local_hour="$(TZ=America/Los_Angeles date +%H)"
+            local_minute="$(TZ=America/Los_Angeles date +%M)"
+            local_hm="${local_hour}:${local_minute}"
+            local_minutes=$((10#$local_hour * 60 + 10#$local_minute))
+
+            # US regular market session (PT): 09:30 through 16:00, weekdays only.
+            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_minutes" -ge 570 && "$local_minutes" -le 960 && $((local_minutes % 15)) -eq 0 ]]; then
+              should_run="true"
+            fi
+          fi
+
+          echo "Pacific weekday=${local_dow}, time=${local_hm}, minute_of_day=${local_minutes}"
+          echo "run_pipeline=$should_run" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        if: steps.guard.outputs.run_pipeline == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.guard.outputs.run_pipeline == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run stock-only pipeline
+        if: steps.guard.outputs.run_pipeline == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python -m src.pipeline --stock-only
+
+      - name: Commit changed stock CSV files
+        if: steps.guard.outputs.run_pipeline == 'true'
+        run: |
+          if [[ -n "$(git status --porcelain data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv
+            git commit -m "chore(data): update intraday stock signals cache"
+            git push
+          else
+            echo "No stock signal cache changes detected."
+          fi
+
+      - name: Skip non-market-hours run
+        if: steps.guard.outputs.run_pipeline != 'true'
+        run: |
+          echo "Skipping intraday stock run: outside 9:30 AM-4:00 PM Pacific weekdays."

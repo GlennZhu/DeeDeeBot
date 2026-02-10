@@ -46,7 +46,7 @@ def test_fetch_stock_daily_history_uses_stooq_symbol_candidates(monkeypatch) -> 
     assert "BRK-B.US" in calls
 
 
-def test_fetch_stock_intraday_latest_uses_stooq_quote(monkeypatch) -> None:
+def test_fetch_stock_intraday_quote_uses_stooq_quote(monkeypatch) -> None:
     def fake_urlopen(url: str, timeout: int = 10) -> _FakeResponse:
         del timeout
         assert "stooq.com/q/l/" in url
@@ -54,8 +54,14 @@ def test_fetch_stock_intraday_latest_uses_stooq_quote(monkeypatch) -> None:
 
     monkeypatch.setattr(data_fetch.request, "urlopen", fake_urlopen)
 
+    quote = data_fetch.fetch_stock_intraday_quote("NVDA")
     value = data_fetch.fetch_stock_intraday_latest("NVDA")
 
+    assert quote is not None
+    assert quote["price"] == 189.25
+    assert quote["source"] == "STOOQ_INTRADAY:NVDA.US"
+    assert quote["quote_timestamp_utc"] is not None
+    assert isinstance(quote["quote_age_seconds"], int)
     assert value == 189.25
 
 

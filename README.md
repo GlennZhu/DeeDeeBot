@@ -25,8 +25,9 @@ Dashboard and pipeline that track:
 - `data/derived/metric_snapshot.csv`: latest macro values
 - `data/derived/signals_latest.csv`: latest macro signal states
 - `data/derived/stock_watchlist.csv`: tracked watchlist symbols
-- `data/derived/stock_signals_latest.csv`: latest stock signal states
+- `data/derived/stock_signals_latest.csv`: latest stock signal states (includes intraday quote freshness fields)
 - `.github/workflows/update_data.yml`: weekday scheduled refresh (Pacific time guard)
+- `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Pacific market-hours guard)
 
 ## Stock Watchlist Metrics
 
@@ -53,6 +54,7 @@ For each watched ticker, the pipeline checks:
 
 Alerts are sent to Discord only on first trigger (`false -> true` versus previous run).
 Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
+`stock_signals_latest.csv` also includes `intraday_quote_timestamp_utc` and `intraday_quote_age_seconds` so quote staleness is explicit.
 
 ## Default Watchlist Seed
 
@@ -88,6 +90,8 @@ Optional flags:
 
 ```bash
 python -m src.pipeline --start-date 2011-01-01 --lookback-years 15
+python -m src.pipeline --macro-only
+python -m src.pipeline --stock-only
 ```
 
 ## Run Dashboard
@@ -111,8 +115,12 @@ Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded a
 - `30 23 * * 1-5`
 - `30 0 * * 2-6`
 
+It executes `python -m src.pipeline --macro-only`.
+
 Notifications:
 
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 
-`workflow_dispatch` remains available for manual runs.
+Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and is guarded at runtime to run only during Pacific regular market hours (**09:30-16:00, weekdays**). It executes `python -m src.pipeline --stock-only`.
+
+`workflow_dispatch` remains available for both workflows.

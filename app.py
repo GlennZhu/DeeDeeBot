@@ -109,6 +109,22 @@ def _format_pst_timestamp(value: object) -> str:
     return ts.tz_convert(PST).strftime("%Y-%m-%d %H:%M:%S PST")
 
 
+def _format_age_seconds(value: object) -> str:
+    if pd.isna(value):
+        return "N/A"
+    try:
+        total_seconds = max(0, int(float(value)))
+    except Exception:
+        return "N/A"
+    minutes, seconds = divmod(total_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {seconds}s"
+    if minutes:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
 def _signal_badge(label: str, color: str) -> str:
     return (
         f"<span style='background-color:{color};color:white;padding:0.2rem 0.45rem;"
@@ -326,7 +342,10 @@ def _render_stock_tab() -> None:
     watchlist = _load_or_initialize_watchlist()
     st.caption("Watchlist editing is disabled in UI. Update `data/derived/stock_watchlist.csv` to change tickers/benchmarks.")
 
-    stock_signals = _load_csv(STOCK_SIGNALS_PATH, ["as_of_date", "last_updated_utc"])
+    stock_signals = _load_csv(
+        STOCK_SIGNALS_PATH,
+        ["as_of_date", "last_updated_utc", "intraday_quote_timestamp_utc"],
+    )
     st.subheader("Latest Watchlist Signals")
 
     if stock_signals.empty:
@@ -374,6 +393,12 @@ def _render_stock_tab() -> None:
                 f"Alpha 1M: {_format_float(row.get('alpha_1m'), 4)}"
             )
         )
+        card.caption(
+            (
+                f"Intraday quote (PST): {_format_pst_timestamp(row.get('intraday_quote_timestamp_utc'))} | "
+                f"Quote age: {_format_age_seconds(row.get('intraday_quote_age_seconds'))}"
+            )
+        )
         if "relative_strength_reasons" in row and pd.notna(row.get("relative_strength_reasons")):
             card.caption(f"RS reasons: {row.get('relative_strength_reasons')}")
 
@@ -396,6 +421,9 @@ def _render_stock_tab() -> None:
         "benchmark_ticker",
         "as_of_date",
         "price",
+        "intraday_quote_timestamp_utc",
+        "intraday_quote_age_seconds",
+        "intraday_quote_source",
         "sma14",
         "sma50",
         "sma100",
@@ -431,6 +459,10 @@ def _render_stock_tab() -> None:
     for col in ["rs_ratio", "rs_ratio_ma20", "alpha_1m"]:
         if col in preview.columns:
             preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v), 4))
+    if "intraday_quote_age_seconds" in preview.columns:
+        preview["intraday_quote_age_seconds"] = preview["intraday_quote_age_seconds"].apply(_format_age_seconds)
+    if "intraday_quote_timestamp_utc" in preview.columns:
+        preview["intraday_quote_timestamp_utc"] = preview["intraday_quote_timestamp_utc"].apply(_format_pst_timestamp)
     if "last_updated_utc" in preview.columns:
         preview["last_updated_utc"] = preview["last_updated_utc"].apply(_format_pst_timestamp)
 
