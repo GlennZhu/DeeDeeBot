@@ -20,6 +20,7 @@ from src.data_fetch import (
 )
 from src.signals import compute_signals
 from src.stock_signals import (
+    BENCHMARK_RELATED_TRIGGER_COLUMNS,
     STOCK_SIGNAL_COLUMNS,
     STOCK_TRIGGER_COLUMNS,
     compute_stock_signal_row,
@@ -56,6 +57,7 @@ DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
     {"ticker": "AVGO", "benchmark": DEFAULT_STOCK_BENCHMARK},
     {"ticker": "NVDA", "benchmark": DEFAULT_STOCK_BENCHMARK},
     {"ticker": "MSFT", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "QQQ", "benchmark": DEFAULT_STOCK_BENCHMARK},
 ]
 
 THRESHOLD_TRIGGER_MAP: dict[str, dict[str, set[str]]] = {
@@ -671,8 +673,11 @@ def _detect_new_stock_trigger_events(previous: pd.DataFrame, current: pd.DataFra
         ticker = _normalize_ticker(row.get("ticker", ""))
         if not ticker:
             continue
+        is_benchmark_ticker = ticker == DEFAULT_STOCK_BENCHMARK
 
         for trigger_id in STOCK_TRIGGER_COLUMNS:
+            if is_benchmark_ticker and trigger_id in BENCHMARK_RELATED_TRIGGER_COLUMNS:
+                continue
             current_state = _as_bool(row.get(trigger_id))
             previous_state = previous_map.get((ticker, trigger_id), False)
             event_type: str | None = None

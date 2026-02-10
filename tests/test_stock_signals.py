@@ -169,6 +169,23 @@ def test_relative_strength_not_weak_when_stock_outperforms() -> None:
     assert row["strong_sell_weak_strength"] is False
 
 
+def test_benchmark_related_trigger_disabled_for_qqq() -> None:
+    qqq = _series([220.0] * 200 + [150.0 - i for i in range(60)])
+    benchmark = _series([100.0 + i * 0.8 for i in range(260)])
+
+    row = stock_signals.compute_stock_signal_row(
+        "QQQ",
+        daily_close=qqq,
+        benchmark_ticker="QQQ",
+        benchmark_close=benchmark,
+    )
+
+    assert row["benchmark_ticker"] == "QQQ"
+    assert row["relative_strength_weak"] is False
+    assert row["strong_sell_weak_strength"] is False
+    assert row["relative_strength_reasons"] == "self_benchmark_reference_skipped"
+
+
 def test_squat_ambush_triggers_near_ma100_zone_in_bull_pullback() -> None:
     closes = _series([100.0] * 200 + [112.0] * 20 + [110.0] * 39 + [111.0])
     row = stock_signals.compute_stock_signal_row("TEST", closes, latest_price=109.0)

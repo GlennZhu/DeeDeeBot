@@ -52,6 +52,7 @@ For each watched ticker, the pipeline checks:
 - RS trend: `RS_Ratio = Stock / Benchmark`, warning when `RS_Ratio < MA20(RS_Ratio)`
 - 1M alpha: `stock_21d_return - benchmark_21d_return`
 - **Strong sell trigger** when weakness is confirmed (`structural_divergence` or `alpha_1m < -5%`)
+- For `QQQ` itself, benchmark-relative alerting is skipped (no benchmark-related trigger alerts).
 
 5. "Squat" buy-zone alerts (bull-market pullback logic):
 - Precondition: `MA200 rising` OR `SMA50 > SMA200`
@@ -74,6 +75,7 @@ If `data/derived/stock_watchlist.csv` does not exist, it is initialized with:
 - `AVGO,QQQ`
 - `NVDA,QQQ`
 - `MSFT,QQQ`
+- `QQQ,QQQ`
 
 Watchlist schema:
 

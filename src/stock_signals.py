@@ -23,6 +23,9 @@ STOCK_TRIGGER_COLUMNS = [
     "squat_dca_below_ma100",
     "squat_last_stand_ma200",
 ]
+BENCHMARK_RELATED_TRIGGER_COLUMNS: set[str] = {
+    "strong_sell_weak_strength",
+}
 
 STOCK_SIGNAL_COLUMNS = [
     "ticker",
@@ -272,8 +275,10 @@ def compute_stock_signal_row(
     benchmark_latest_price: float | None = None,
 ) -> dict[str, Any]:
     """Compute one watchlist signal row from daily closes and optional intraday prices."""
+    ticker = str(ticker).strip().upper()
     requested_benchmark = str(benchmark_ticker).strip().upper()
     benchmark_ticker = DEFAULT_BENCHMARK_TICKER
+    is_benchmark_ticker = ticker == benchmark_ticker
 
     # Benchmark is intentionally fixed to QQQ for all tickers.
     if requested_benchmark and requested_benchmark != benchmark_ticker:
@@ -371,10 +376,12 @@ def compute_stock_signal_row(
         "rs_trend_down": False,
         "rs_negative_alpha": False,
         "relative_strength_weak": False,
-        "relative_strength_reasons": "benchmark_not_available",
+        "relative_strength_reasons": (
+            "self_benchmark_reference_skipped" if is_benchmark_ticker else "benchmark_not_available"
+        ),
     }
 
-    if benchmark_close is not None:
+    if benchmark_close is not None and not is_benchmark_ticker:
         relative = _relative_strength_signals(
             stock_series=evaluated,
             stock_price=price,
@@ -384,7 +391,7 @@ def compute_stock_signal_row(
             benchmark_latest_price=benchmark_latest_price,
         )
 
-    strong_sell_weak_strength = bool(relative["relative_strength_weak"])
+    strong_sell_weak_strength = bool(relative["relative_strength_weak"]) and not is_benchmark_ticker
 
     status = "ok"
     status_message = f"Signals computed successfully (price basis: {price_basis})."

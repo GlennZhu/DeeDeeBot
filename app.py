@@ -20,6 +20,7 @@ DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
     {"ticker": "AVGO"},
     {"ticker": "NVDA"},
     {"ticker": "MSFT"},
+    {"ticker": "QQQ"},
 ]
 
 HISTORY_OPTIONS = {

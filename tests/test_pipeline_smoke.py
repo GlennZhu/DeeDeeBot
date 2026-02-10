@@ -116,8 +116,8 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
 
     watchlist = pd.read_csv(derived_dir / "stock_watchlist.csv")
     assert {"ticker", "benchmark"}.issubset(set(watchlist.columns))
-    assert watchlist["ticker"].tolist() == ["GOOG", "AVGO", "NVDA", "MSFT"]
-    assert watchlist["benchmark"].tolist() == ["QQQ", "QQQ", "QQQ", "QQQ"]
+    assert watchlist["ticker"].tolist() == ["GOOG", "AVGO", "NVDA", "MSFT", "QQQ"]
+    assert watchlist["benchmark"].tolist() == ["QQQ", "QQQ", "QQQ", "QQQ", "QQQ"]
 
     stock_signals = pd.read_csv(derived_dir / "stock_signals_latest.csv")
     assert {
@@ -163,7 +163,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "status_message",
         "last_updated_utc",
     }.issubset(set(stock_signals.columns))
-    assert set(stock_signals["ticker"].tolist()) == {"GOOG", "AVGO", "NVDA", "MSFT"}
+    assert set(stock_signals["ticker"].tolist()) == {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ"}
 
     signal_events = pd.read_csv(derived_dir / "signal_events_7d.csv")
     assert signal_events.columns.tolist() == pipeline.SIGNAL_EVENT_COLUMNS
@@ -475,6 +475,32 @@ def test_detect_new_stock_trigger_events_includes_negative_clear_only() -> None:
     assert len(events) == 1
     assert events[0]["trigger_id"] == "exit_price_below_sma50"
     assert events[0]["event_type"] == "cleared"
+
+
+def test_detect_new_stock_trigger_events_skips_benchmark_related_alerts_for_qqq() -> None:
+    previous = pd.DataFrame(
+        [
+            _stock_row(
+                "QQQ",
+                strong_sell_weak_strength=False,
+                exit_price_below_sma50=False,
+            )
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            _stock_row(
+                "QQQ",
+                strong_sell_weak_strength=True,
+                exit_price_below_sma50=True,
+            )
+        ]
+    )
+
+    events = pipeline._detect_new_stock_trigger_events(previous, current)
+    trigger_ids = [event["trigger_id"] for event in events]
+
+    assert trigger_ids == ["exit_price_below_sma50"]
 
 
 def test_notify_new_thresholds_posts_to_discord(monkeypatch) -> None:
