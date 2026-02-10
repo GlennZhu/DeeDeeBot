@@ -72,6 +72,36 @@ STOCK_TRIGGER_COLORS = {
     "squat_last_stand_ma200": "#b26a00",
 }
 
+MACRO_SIGNAL_LABELS = {
+    "m2_yoy_gt_0": "M2 YoY > 0",
+    "hiring_rate_lte_3_4": "Hiring rate <= 3.4",
+    "ten_year_yield_gte_4_4": "10Y yield >= 4.4",
+    "ten_year_yield_gte_5_0": "10Y yield >= 5.0",
+    "buffett_ratio_gte_2_0": "Buffett ratio >= 2.0",
+    "unemployment_mom_gte_0_1": "Unemployment MoM >= 0.1",
+    "unemployment_mom_gte_0_2": "Unemployment MoM >= 0.2",
+}
+
+EVENT_TYPE_LABELS = {
+    "triggered": "Triggered",
+    "cleared": "Cleared",
+}
+
+EVENT_TYPE_COLORS = {
+    "triggered": "#b26a00",
+    "cleared": "#188038",
+}
+
+DOMAIN_LABELS = {
+    "macro": "Macro",
+    "stock": "Stock",
+}
+
+DOMAIN_COLORS = {
+    "macro": "#1f6feb",
+    "stock": "#0f766e",
+}
+
 
 @st.cache_data
 def _load_csv(path: Path, date_columns: list[str]) -> pd.DataFrame:
@@ -142,6 +172,106 @@ def _format_age_seconds(value: object) -> str:
     if minutes:
         return f"{minutes}m {seconds}s"
     return f"{seconds}s"
+
+
+def _clean_event_text(raw_value: object) -> str:
+    if pd.isna(raw_value):
+        return ""
+    return str(raw_value).strip()
+
+
+def _format_event_number(raw_value: object, digits: int = 2) -> str | None:
+    if pd.isna(raw_value):
+        return None
+    try:
+        return f"{float(raw_value):.{digits}f}"
+    except Exception:
+        clean = str(raw_value).strip()
+        return clean or None
+
+
+def _format_event_price(raw_value: object) -> str | None:
+    number = _format_event_number(raw_value, digits=2)
+    if number is None:
+        return None
+    return f"${number}"
+
+
+def _humanize_state_transition(raw_value: object) -> str:
+    text = _clean_event_text(raw_value)
+    if not text:
+        return ""
+    if "->" not in text:
+        return text.replace("_", " ")
+    left, right = [part.strip() for part in text.split("->", maxsplit=1)]
+    left_clean = left.replace("_", " ").title() if left else "Unknown"
+    right_clean = right.replace("_", " ").title() if right else "Unknown"
+    return f"{left_clean} -> {right_clean}"
+
+
+def _event_signal_label(row: pd.Series) -> str:
+    domain = _clean_event_text(row.get("domain")).lower()
+    signal_id = _clean_event_text(row.get("signal_id"))
+    signal_label = _clean_event_text(row.get("signal_label"))
+
+    if domain == "stock" and signal_id in STOCK_TRIGGER_LABELS:
+        return STOCK_TRIGGER_LABELS[signal_id]
+    if domain == "macro" and signal_id in MACRO_SIGNAL_LABELS:
+        return MACRO_SIGNAL_LABELS[signal_id]
+    if signal_label:
+        return signal_label
+    if signal_id:
+        return signal_id.replace("_", " ").title()
+    return "Unknown signal"
+
+
+def _event_subject_label(row: pd.Series) -> str:
+    subject_name = _clean_event_text(row.get("subject_name"))
+    subject_id = _clean_event_text(row.get("subject_id"))
+    return subject_name or subject_id or "Unknown subject"
+
+
+def _event_headline(row: pd.Series) -> str:
+    domain = _clean_event_text(row.get("domain")).lower()
+    subject = _event_subject_label(row)
+    signal_label = _event_signal_label(row)
+    if domain == "stock":
+        return f"{subject}: {signal_label}"
+    return f"{subject}: {signal_label}"
+
+
+def _event_message(row: pd.Series) -> str:
+    domain = _clean_event_text(row.get("domain")).lower()
+    as_of_date = _clean_event_text(row.get("as_of_date"))
+
+    if domain == "macro":
+        parts: list[str] = []
+        if as_of_date:
+            parts.append(f"As of {as_of_date}")
+        value = _format_event_number(row.get("value"), digits=2)
+        if value is not None:
+            parts.append(f"Value {value}")
+        state_transition = _humanize_state_transition(row.get("state_transition"))
+        if state_transition:
+            parts.append(f"State {state_transition}")
+        details = _clean_event_text(row.get("details"))
+        if details:
+            parts.append(f"Details {details.replace('_', ' ')}")
+        return " | ".join(parts)
+
+    parts = []
+    if as_of_date:
+        parts.append(f"As of {as_of_date}")
+    price = _format_event_price(row.get("price"))
+    if price is not None:
+        parts.append(f"Price {price}")
+    status = _clean_event_text(row.get("status"))
+    if status and status.lower() != "ok":
+        parts.append(f"Status {status}")
+    details = _clean_event_text(row.get("details"))
+    if details:
+        parts.append(f"Details {details.replace('_', ' ')}")
+    return " | ".join(parts)
 
 
 def _signal_badge(label: str, color: str) -> str:
@@ -546,9 +676,17 @@ def _render_signal_history_tab() -> None:
         st.info("No signal events in the last 7 days.")
         return
 
-    signal_events["event_timestamp_utc"] = event_timestamps.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     signal_events["domain"] = signal_events["domain"].astype(str).str.strip().str.lower()
     signal_events["event_type"] = signal_events["event_type"].astype(str).str.strip().str.lower()
+    signal_events["_event_ts"] = event_timestamps
+    signal_events["event_timestamp_utc"] = event_timestamps.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    signal_events["event_timestamp_pt"] = signal_events["event_timestamp_utc"].apply(_format_pst_timestamp)
+    signal_events["headline"] = signal_events.apply(_event_headline, axis=1)
+    signal_events["message"] = signal_events.apply(_event_message, axis=1)
+    signal_events["domain_display"] = signal_events["domain"].map(DOMAIN_LABELS).fillna(signal_events["domain"].str.title())
+    signal_events["event_type_display"] = signal_events["event_type"].map(EVENT_TYPE_LABELS).fillna(
+        signal_events["event_type"].str.title()
+    )
 
     metric_cols = st.columns(5)
     metric_cols[0].metric("Total (7D)", len(signal_events))
@@ -557,24 +695,60 @@ def _render_signal_history_tab() -> None:
     metric_cols[3].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
     metric_cols[4].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
 
-    filter_cols = st.columns(2)
+    filter_cols = st.columns(3)
     selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock"], index=0)
     selected_event_type = filter_cols[1].selectbox("Event Type", ["All", "Triggered", "Cleared"], index=0)
+    search_term = filter_cols[2].text_input("Search", placeholder="Ticker, metric, signal, or detail")
 
     filtered = signal_events.copy()
     if selected_domain != "All":
         filtered = filtered[filtered["domain"] == selected_domain.lower()]
     if selected_event_type != "All":
         filtered = filtered[filtered["event_type"] == selected_event_type.lower()]
+    if search_term.strip():
+        query = search_term.strip().lower()
+        search_columns = [
+            "subject_id",
+            "subject_name",
+            "benchmark_ticker",
+            "signal_id",
+            "signal_label",
+            "state_transition",
+            "details",
+            "headline",
+            "message",
+        ]
+        search_mask = pd.Series(False, index=filtered.index)
+        for col in search_columns:
+            search_mask = search_mask | filtered[col].astype(str).str.lower().str.contains(query, na=False)
+        filtered = filtered.loc[search_mask]
 
     if filtered.empty:
         st.info("No events match the selected filters.")
         return
 
-    display = filtered.sort_values("event_timestamp_utc", ascending=False).copy()
-    display["domain"] = display["domain"].str.title()
-    display["event_type"] = display["event_type"].str.title()
-    st.dataframe(display, hide_index=True, use_container_width=True)
+    display = filtered.sort_values("_event_ts", ascending=False).copy()
+    max_rows = 75
+    if len(display) > max_rows:
+        st.caption(f"Showing the latest {max_rows} events. Refine filters/search to narrow results.")
+
+    for _, row in display.head(max_rows).iterrows():
+        event_type = _clean_event_text(row.get("event_type")).lower()
+        event_color = EVENT_TYPE_COLORS.get(event_type, "#6b7280")
+        event_label = _clean_event_text(row.get("event_type_display")) or "Event"
+        domain = _clean_event_text(row.get("domain")).lower()
+        domain_color = DOMAIN_COLORS.get(domain, "#6b7280")
+        domain_label = _clean_event_text(row.get("domain_display")) or "Domain"
+
+        with st.container(border=True):
+            header_cols = st.columns([1, 1, 5, 2])
+            header_cols[0].markdown(_signal_badge(event_label, event_color), unsafe_allow_html=True)
+            header_cols[1].markdown(_signal_badge(domain_label, domain_color), unsafe_allow_html=True)
+            header_cols[2].markdown(f"**{_clean_event_text(row.get('headline'))}**")
+            header_cols[3].caption(_clean_event_text(row.get("event_timestamp_pt")) or "N/A")
+            message = _clean_event_text(row.get("message"))
+            if message:
+                st.caption(message)
 
 
 def main() -> None:
