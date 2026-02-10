@@ -16,8 +16,8 @@ Dashboard and pipeline that track:
 
 ## Project Structure
 
-- `app.py`: Streamlit dashboard with tabs (`Macro Monitor`, `Stock Watchlist`)
-- `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord first-trigger alerts
+- `app.py`: Streamlit dashboard with tabs (`Macro Monitor`, `Stock Watchlist`, `Signal History (7D)`)
+- `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord alerts
 - `src/signals.py`: macro signal logic and thresholds
 - `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence/relative strength)
 - `src/data_fetch.py`: FRED and Stooq fetchers (daily + intraday quote endpoint)
@@ -26,6 +26,7 @@ Dashboard and pipeline that track:
 - `data/derived/signals_latest.csv`: latest macro signal states
 - `data/derived/stock_watchlist.csv`: tracked watchlist symbols
 - `data/derived/stock_signals_latest.csv`: latest stock signal states (includes intraday quote freshness fields)
+- `data/derived/signal_events_7d.csv`: rolling 7-day signal event history (`triggered` and `cleared`)
 - `.github/workflows/update_data.yml`: weekday scheduled refresh (Pacific time guard)
 - `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Pacific market-hours guard)
 
@@ -62,6 +63,8 @@ For each watched ticker, the pipeline checks:
 Alerts are sent to Discord on first trigger (`false -> true` versus previous run), and when negative signals clear (`true -> false` for risk/exit macro and stock conditions).
 Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
 `stock_signals_latest.csv` also includes `intraday_quote_timestamp_utc` and `intraday_quote_age_seconds` so quote staleness is explicit.
+`signal_events_7d.csv` captures both `triggered` and `cleared` transitions and is pruned to the last 7 days by event timestamp on every pipeline run.
+You can browse this history in the Streamlit `Signal History (7D)` tab.
 
 ## Default Watchlist Seed
 

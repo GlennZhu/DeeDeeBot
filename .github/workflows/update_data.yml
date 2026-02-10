@@ -56,10 +56,10 @@ jobs:
         id: commit_data
         if: steps.guard.outputs.run_pipeline == 'true'
         run: |
-          if [[ -n "$(git status --porcelain data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv)" ]]; then
+          if [[ -n "$(git status --porcelain data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv data/derived/signal_events_7d.csv)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv
+            git add data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv data/derived/signal_events_7d.csv
             git commit -m "chore(data): update macro dashboard cache"
             git push
             echo "data_changed=true" >> "$GITHUB_OUTPUT"

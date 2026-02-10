@@ -63,10 +63,10 @@ jobs:
       - name: Commit changed stock CSV files
         if: steps.guard.outputs.run_pipeline == 'true'
         run: |
-          if [[ -n "$(git status --porcelain data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv)" ]]; then
+          if [[ -n "$(git status --porcelain data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv data/derived/signal_events_7d.csv)" ]]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv
+            git add data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv data/derived/signal_events_7d.csv
             git commit -m "chore(data): update intraday stock signals cache"
             git push
           else

@@ -14,6 +14,7 @@ RAW_DATA_DIR = Path("data/raw")
 DERIVED_DATA_DIR = Path("data/derived")
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
+SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
     {"ticker": "GOOG"},
     {"ticker": "AVGO"},
@@ -484,6 +485,81 @@ def _render_stock_tab() -> None:
     st.dataframe(preview.sort_values("ticker"), hide_index=True, use_container_width=True)
 
 
+def _render_signal_history_tab() -> None:
+    signal_events = _load_csv(SIGNAL_EVENTS_PATH, ["event_timestamp_utc"])
+    st.subheader("Signal Events (Past 7 Days)")
+
+    if signal_events.empty:
+        st.info("No signal event history found yet. Run the pipeline to begin tracking fired signals.")
+        return
+
+    required_columns = [
+        "event_timestamp_utc",
+        "event_timestamp_pt",
+        "domain",
+        "event_type",
+        "subject_id",
+        "subject_name",
+        "benchmark_ticker",
+        "signal_id",
+        "signal_label",
+        "as_of_date",
+        "value",
+        "price",
+        "state_transition",
+        "status",
+        "details",
+    ]
+    for col in required_columns:
+        if col not in signal_events.columns:
+            signal_events[col] = ""
+
+    signal_events = signal_events[required_columns].copy()
+    event_timestamps = pd.to_datetime(signal_events["event_timestamp_utc"], errors="coerce", utc=True)
+    now_utc = pd.Timestamp.utcnow()
+    if now_utc.tzinfo is None:
+        now_utc = now_utc.tz_localize("UTC")
+    else:
+        now_utc = now_utc.tz_convert("UTC")
+    cutoff = now_utc - pd.Timedelta(days=7)
+    in_window = event_timestamps >= cutoff
+    signal_events = signal_events.loc[in_window].copy()
+    event_timestamps = event_timestamps.loc[in_window]
+    if signal_events.empty:
+        st.info("No signal events in the last 7 days.")
+        return
+
+    signal_events["event_timestamp_utc"] = event_timestamps.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    signal_events["domain"] = signal_events["domain"].astype(str).str.strip().str.lower()
+    signal_events["event_type"] = signal_events["event_type"].astype(str).str.strip().str.lower()
+
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Total (7D)", len(signal_events))
+    metric_cols[1].metric("Macro", int((signal_events["domain"] == "macro").sum()))
+    metric_cols[2].metric("Stock", int((signal_events["domain"] == "stock").sum()))
+    metric_cols[3].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
+    metric_cols[4].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
+
+    filter_cols = st.columns(2)
+    selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock"], index=0)
+    selected_event_type = filter_cols[1].selectbox("Event Type", ["All", "Triggered", "Cleared"], index=0)
+
+    filtered = signal_events.copy()
+    if selected_domain != "All":
+        filtered = filtered[filtered["domain"] == selected_domain.lower()]
+    if selected_event_type != "All":
+        filtered = filtered[filtered["event_type"] == selected_event_type.lower()]
+
+    if filtered.empty:
+        st.info("No events match the selected filters.")
+        return
+
+    display = filtered.sort_values("event_timestamp_utc", ascending=False).copy()
+    display["domain"] = display["domain"].str.title()
+    display["event_type"] = display["event_type"].str.title()
+    st.dataframe(display, hide_index=True, use_container_width=True)
+
+
 def main() -> None:
     st.set_page_config(page_title="Macro + Stock Signal Monitor", layout="wide")
     st.title("Macro + Stock Signal Monitor")
@@ -494,11 +570,13 @@ def main() -> None:
         st.cache_data.clear()
         st.rerun()
 
-    macro_tab, stock_tab = st.tabs(["Macro Monitor", "Stock Watchlist"])
+    macro_tab, stock_tab, history_tab = st.tabs(["Macro Monitor", "Stock Watchlist", "Signal History (7D)"])
     with macro_tab:
         _render_macro_tab(selected_window)
     with stock_tab:
         _render_stock_tab()
+    with history_tab:
+        _render_signal_history_tab()
 
 
 if __name__ == "__main__":

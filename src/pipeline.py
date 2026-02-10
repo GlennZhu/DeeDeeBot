@@ -31,6 +31,25 @@ RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived"
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
+SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
+SIGNAL_EVENT_RETENTION_DAYS = 7
+SIGNAL_EVENT_COLUMNS = [
+    "event_timestamp_utc",
+    "event_timestamp_pt",
+    "domain",
+    "event_type",
+    "subject_id",
+    "subject_name",
+    "benchmark_ticker",
+    "signal_id",
+    "signal_label",
+    "as_of_date",
+    "value",
+    "price",
+    "state_transition",
+    "status",
+    "details",
+]
 DEFAULT_STOCK_BENCHMARK = "QQQ"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
     {"ticker": "GOOG", "benchmark": DEFAULT_STOCK_BENCHMARK},
@@ -161,6 +180,176 @@ def _latest_snapshot(metric_key: str, series: pd.Series, now_iso: str) -> dict[s
 def _write_csv(path: Path, frame: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(path, index=False)
+
+
+def _empty_signal_events_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=SIGNAL_EVENT_COLUMNS)
+
+
+def _format_pt_timestamp_from_utc(raw_value: str) -> str:
+    ts = pd.Timestamp(raw_value)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    return ts.tz_convert("America/Los_Angeles").strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _event_cell_value(raw_value: Any) -> Any:
+    if pd.isna(raw_value):
+        return ""
+    return raw_value
+
+
+def _load_signal_event_history(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return _empty_signal_events_frame()
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        print(f"Warning: failed to read signal events at {path}: {exc}; reinitializing empty history.")
+        return _empty_signal_events_frame()
+
+    out = frame.copy()
+    for col in SIGNAL_EVENT_COLUMNS:
+        if col not in out.columns:
+            out[col] = ""
+    return out[SIGNAL_EVENT_COLUMNS]
+
+
+def _prune_signal_event_history(frame: pd.DataFrame, now_iso: str) -> pd.DataFrame:
+    if frame.empty:
+        return _empty_signal_events_frame()
+
+    out = frame.copy()
+    for col in SIGNAL_EVENT_COLUMNS:
+        if col not in out.columns:
+            out[col] = ""
+    out = out[SIGNAL_EVENT_COLUMNS]
+
+    event_ts = pd.to_datetime(out["event_timestamp_utc"], errors="coerce", utc=True)
+    cutoff = pd.Timestamp(now_iso)
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.tz_localize("UTC")
+    else:
+        cutoff = cutoff.tz_convert("UTC")
+    cutoff = cutoff - pd.Timedelta(days=SIGNAL_EVENT_RETENTION_DAYS)
+
+    keep_mask = event_ts >= cutoff
+    kept = out.loc[keep_mask].copy()
+    kept_ts = event_ts.loc[keep_mask]
+    if kept.empty:
+        return _empty_signal_events_frame()
+
+    kept["event_timestamp_utc"] = kept_ts.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    kept["_sort_ts"] = kept_ts
+    kept = kept.sort_values("_sort_ts").drop(columns=["_sort_ts"]).reset_index(drop=True)
+    return kept[SIGNAL_EVENT_COLUMNS]
+
+
+def _build_macro_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -> list[dict[str, Any]]:
+    event_rows: list[dict[str, Any]] = []
+    event_timestamp_pt = _format_pt_timestamp_from_utc(now_iso)
+
+    for event in events:
+        metric_key = str(event.get("metric_key", "")).strip()
+        if not metric_key:
+            continue
+
+        metric_name = str(event.get("metric_name", metric_key)).strip() or metric_key
+        as_of_date = str(event.get("as_of_date", ""))
+        state_transition = f"{event.get('prev_signal_state', 'unknown')} -> {event.get('signal_state', 'unknown')}"
+
+        for event_type, id_key, label_key in (
+            ("triggered", "new_threshold_ids", "new_threshold_labels"),
+            ("cleared", "cleared_threshold_ids", "cleared_threshold_labels"),
+        ):
+            threshold_ids = list(event.get(id_key, []))
+            threshold_labels = list(event.get(label_key, []))
+            for idx, threshold_id in enumerate(threshold_ids):
+                signal_id = str(threshold_id)
+                signal_label = (
+                    str(threshold_labels[idx]) if idx < len(threshold_labels) else THRESHOLD_LABELS.get(signal_id, signal_id)
+                )
+                event_rows.append(
+                    {
+                        "event_timestamp_utc": now_iso,
+                        "event_timestamp_pt": event_timestamp_pt,
+                        "domain": "macro",
+                        "event_type": event_type,
+                        "subject_id": metric_key,
+                        "subject_name": metric_name,
+                        "benchmark_ticker": "",
+                        "signal_id": signal_id,
+                        "signal_label": signal_label,
+                        "as_of_date": as_of_date,
+                        "value": _event_cell_value(event.get("value")),
+                        "price": "",
+                        "state_transition": state_transition,
+                        "status": "",
+                        "details": "",
+                    }
+                )
+    return event_rows
+
+
+def _build_stock_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -> list[dict[str, Any]]:
+    event_rows: list[dict[str, Any]] = []
+    event_timestamp_pt = _format_pt_timestamp_from_utc(now_iso)
+
+    for event in events:
+        ticker = _normalize_ticker(event.get("ticker", ""))
+        if not ticker:
+            continue
+        event_type = str(event.get("event_type", "triggered")).strip().lower()
+        if event_type not in {"triggered", "cleared"}:
+            event_type = "triggered"
+
+        details = ""
+        if event.get("trigger_id") == "strong_sell_weak_strength":
+            raw_details = event.get("relative_strength_reasons")
+            if raw_details is not None and not pd.isna(raw_details):
+                details = str(raw_details)
+
+        event_rows.append(
+            {
+                "event_timestamp_utc": now_iso,
+                "event_timestamp_pt": event_timestamp_pt,
+                "domain": "stock",
+                "event_type": event_type,
+                "subject_id": ticker,
+                "subject_name": ticker,
+                "benchmark_ticker": _normalize_benchmark(event.get("benchmark_ticker", DEFAULT_STOCK_BENCHMARK)),
+                "signal_id": str(event.get("trigger_id", "")),
+                "signal_label": str(event.get("trigger_label", "")),
+                "as_of_date": str(event.get("as_of_date", "")),
+                "value": "",
+                "price": _event_cell_value(event.get("price")),
+                "state_transition": "",
+                "status": str(event.get("status", "")),
+                "details": details,
+            }
+        )
+    return event_rows
+
+
+def _update_signal_event_history(
+    path: Path,
+    *,
+    macro_events: list[dict[str, Any]],
+    stock_events: list[dict[str, Any]],
+    now_iso: str,
+) -> None:
+    existing = _load_signal_event_history(path)
+    new_rows = [*_build_macro_signal_event_rows(macro_events, now_iso), *_build_stock_signal_event_rows(stock_events, now_iso)]
+    if new_rows:
+        new_frame = pd.DataFrame(new_rows, columns=SIGNAL_EVENT_COLUMNS)
+        combined = new_frame if existing.empty else pd.concat([existing, new_frame], ignore_index=True)
+    else:
+        combined = existing.copy()
+
+    pruned = _prune_signal_event_history(combined, now_iso=now_iso)
+    _write_csv(path, pruned)
 
 
 def _normalize_ticker(raw_value: Any) -> str:
@@ -564,8 +753,7 @@ def _post_discord_message(webhook_url: str, content: str) -> None:
         return
 
 
-def _notify_new_thresholds(previous: pd.DataFrame, current: pd.DataFrame, now_iso: str) -> None:
-    events = _detect_new_threshold_events(previous, current)
+def _notify_threshold_events(events: list[dict[str, Any]], now_iso: str) -> None:
     if not events:
         return
 
@@ -581,8 +769,12 @@ def _notify_new_thresholds(previous: pd.DataFrame, current: pd.DataFrame, now_is
         print(f"Warning: failed to send Discord alert: {exc}")
 
 
-def _notify_new_stock_triggers(previous: pd.DataFrame, current: pd.DataFrame, now_iso: str) -> None:
-    events = _detect_new_stock_trigger_events(previous, current)
+def _notify_new_thresholds(previous: pd.DataFrame, current: pd.DataFrame, now_iso: str) -> None:
+    events = _detect_new_threshold_events(previous, current)
+    _notify_threshold_events(events, now_iso)
+
+
+def _notify_stock_trigger_events(events: list[dict[str, Any]], now_iso: str) -> None:
     if not events:
         return
 
@@ -596,6 +788,11 @@ def _notify_new_stock_triggers(previous: pd.DataFrame, current: pd.DataFrame, no
         _post_discord_message(webhook_url, message)
     except Exception as exc:
         print(f"Warning: failed to send stock Discord alert: {exc}")
+
+
+def _notify_new_stock_triggers(previous: pd.DataFrame, current: pd.DataFrame, now_iso: str) -> None:
+    events = _detect_new_stock_trigger_events(previous, current)
+    _notify_stock_trigger_events(events, now_iso)
 
 
 def _run_macro_pipeline(start_date: str, now_iso: str) -> None:
@@ -660,7 +857,14 @@ def _run_macro_pipeline(start_date: str, now_iso: str) -> None:
     _write_csv(DERIVED_DATA_DIR / "metric_snapshot.csv", metric_snapshot)
     _write_csv(DERIVED_DATA_DIR / "signals_latest.csv", signals)
 
-    _notify_new_thresholds(previous_signals, signals, now_iso)
+    macro_events = _detect_new_threshold_events(previous_signals, signals)
+    _update_signal_event_history(
+        SIGNAL_EVENTS_PATH,
+        macro_events=macro_events,
+        stock_events=[],
+        now_iso=now_iso,
+    )
+    _notify_threshold_events(macro_events, now_iso)
 
 
 def _run_stock_pipeline(start_date: str, now_iso: str) -> None:
@@ -668,7 +872,14 @@ def _run_stock_pipeline(start_date: str, now_iso: str) -> None:
     watchlist = _load_or_initialize_watchlist(STOCK_WATCHLIST_PATH)
     stock_signals = _compute_watchlist_signals(watchlist=watchlist, start_date=start_date, now_iso=now_iso)
     _write_csv(STOCK_SIGNALS_PATH, stock_signals)
-    _notify_new_stock_triggers(previous_stock_signals, stock_signals, now_iso)
+    stock_events = _detect_new_stock_trigger_events(previous_stock_signals, stock_signals)
+    _update_signal_event_history(
+        SIGNAL_EVENTS_PATH,
+        macro_events=[],
+        stock_events=stock_events,
+        now_iso=now_iso,
+    )
+    _notify_stock_trigger_events(stock_events, now_iso)
 
 
 def run_pipeline(
