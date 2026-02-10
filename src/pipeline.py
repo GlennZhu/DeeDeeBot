@@ -84,6 +84,9 @@ STOCK_TRIGGER_LABELS: dict[str, str] = {
     "exit_rsi_overbought": "RSI overbought: RSI14 > 80",
     "rsi_bearish_divergence": "RSI bearish divergence",
     "strong_sell_weak_strength": "Strong sell: comparative relative weakness",
+    "squat_ambush_near_ma100_or_ma200": "🟢 Approaching Buy Zone: Price is near MA100/200.",
+    "squat_dca_below_ma100": "🔵 Price Broken MA100: Activate DCA Mode.",
+    "squat_last_stand_ma200": "⚠️ Critical Support: Testing MA200.",
 }
 
 

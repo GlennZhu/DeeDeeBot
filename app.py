@@ -52,6 +52,9 @@ STOCK_TRIGGER_LABELS = {
     "exit_rsi_overbought": "Risk: RSI14 > 80",
     "rsi_bearish_divergence": "Bearish RSI Divergence",
     "strong_sell_weak_strength": "Strong Sell: Weak Relative Strength",
+    "squat_ambush_near_ma100_or_ma200": "🟢 Approaching Buy Zone",
+    "squat_dca_below_ma100": "🔵 DCA Mode (MA100 Broken)",
+    "squat_last_stand_ma200": "⚠️ Critical Support (MA200)",
 }
 
 STOCK_TRIGGER_COLORS = {
@@ -62,6 +65,9 @@ STOCK_TRIGGER_COLORS = {
     "exit_rsi_overbought": "#b26a00",
     "rsi_bearish_divergence": "#b26a00",
     "strong_sell_weak_strength": "#b3261e",
+    "squat_ambush_near_ma100_or_ma200": "#188038",
+    "squat_dca_below_ma100": "#1f6feb",
+    "squat_last_stand_ma200": "#b26a00",
 }
 
 
@@ -92,6 +98,12 @@ def _format_float(value: object, digits: int = 2) -> str:
     if pd.isna(value):
         return "N/A"
     return f"{float(value):.{digits}f}"
+
+
+def _format_ratio_pct(value: object, digits: int = 2) -> str:
+    if pd.isna(value):
+        return "N/A"
+    return f"{float(value) * 100:.{digits}f}%"
 
 
 def _format_pst_timestamp(value: object) -> str:
@@ -372,6 +384,14 @@ def _render_stock_tab() -> None:
         )
         card.caption(
             (
+                f"Squat trend-up: {'Yes' if _as_bool(row.get('squat_bull_market_precondition')) else 'No'} | "
+                f"Price dropping: {'Yes' if _as_bool(row.get('squat_price_dropping')) else 'No'} | "
+                f"Gap->MA100: {_format_ratio_pct(row.get('squat_gap_to_sma100_pct'))} | "
+                f"Gap->MA200: {_format_ratio_pct(row.get('squat_gap_to_sma200_pct'))}"
+            )
+        )
+        card.caption(
+            (
                 f"RS ratio: {_format_float(row.get('rs_ratio'), 4)} | "
                 f"RS MA20: {_format_float(row.get('rs_ratio_ma20'), 4)} | "
                 f"Alpha 1M: {_format_float(row.get('alpha_1m'), 4)}"
@@ -412,6 +432,10 @@ def _render_stock_tab() -> None:
         "sma50",
         "sma100",
         "sma200",
+        "squat_bull_market_precondition",
+        "squat_price_dropping",
+        "squat_gap_to_sma100_pct",
+        "squat_gap_to_sma200_pct",
         "rsi14",
         "benchmark_price",
         "benchmark_sma50",
@@ -430,6 +454,9 @@ def _render_stock_tab() -> None:
         "exit_rsi_overbought",
         "rsi_bearish_divergence",
         "strong_sell_weak_strength",
+        "squat_ambush_near_ma100_or_ma200",
+        "squat_dca_below_ma100",
+        "squat_last_stand_ma200",
         "status",
         "status_message",
         "last_updated_utc",
@@ -443,6 +470,9 @@ def _render_stock_tab() -> None:
     for col in ["rs_ratio", "rs_ratio_ma20", "alpha_1m"]:
         if col in preview.columns:
             preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v), 4))
+    for col in ["squat_gap_to_sma100_pct", "squat_gap_to_sma200_pct"]:
+        if col in preview.columns:
+            preview[col] = preview[col].apply(lambda v: None if pd.isna(v) else round(float(v) * 100, 2))
     if "intraday_quote_age_seconds" in preview.columns:
         preview["intraday_quote_age_seconds"] = preview["intraday_quote_age_seconds"].apply(_format_age_seconds)
     if "intraday_quote_timestamp_utc" in preview.columns:

@@ -130,6 +130,11 @@ def test_compute_stock_signal_row_insufficient_data() -> None:
     assert row["exit_death_cross_50_lt_200"] is False
     assert row["exit_rsi_overbought"] is False
     assert row["rsi_bearish_divergence"] is False
+    assert row["squat_bull_market_precondition"] is False
+    assert row["squat_price_dropping"] is False
+    assert row["squat_ambush_near_ma100_or_ma200"] is False
+    assert row["squat_dca_below_ma100"] is False
+    assert row["squat_last_stand_ma200"] is False
 
 
 def test_relative_strength_triggers_strong_sell_on_weakness() -> None:
@@ -162,3 +167,45 @@ def test_relative_strength_not_weak_when_stock_outperforms() -> None:
 
     assert row["relative_strength_weak"] is False
     assert row["strong_sell_weak_strength"] is False
+
+
+def test_squat_ambush_triggers_near_ma100_zone_in_bull_pullback() -> None:
+    closes = _series([100.0] * 200 + [112.0] * 20 + [110.0] * 39 + [111.0])
+    row = stock_signals.compute_stock_signal_row("TEST", closes, latest_price=109.0)
+
+    assert row["status"] == "ok"
+    assert row["squat_bull_market_precondition"] is True
+    assert row["squat_price_dropping"] is True
+    assert 0.02 <= float(row["squat_gap_to_sma100_pct"]) <= 0.03
+    assert row["squat_ambush_near_ma100_or_ma200"] is True
+
+
+def test_squat_dca_triggers_on_cross_below_ma100() -> None:
+    closes = _series([100.0] * 200 + [120.0] * 30 + [118.0] * 30)
+    row = stock_signals.compute_stock_signal_row("TEST", closes, latest_price=109.0)
+
+    assert row["status"] == "ok"
+    assert row["squat_bull_market_precondition"] is True
+    assert row["squat_dca_below_ma100"] is True
+    assert float(row["price"]) < float(row["sma100"])
+
+
+def test_squat_last_stand_triggers_when_price_tests_ma200() -> None:
+    closes = _series([100.0 + i * 0.5 for i in range(240)] + [120.0] * 20)
+    row = stock_signals.compute_stock_signal_row("TEST", closes)
+
+    assert row["status"] == "ok"
+    assert row["squat_bull_market_precondition"] is True
+    assert row["squat_last_stand_ma200"] is True
+    assert float(row["price"]) <= float(row["sma200"])
+
+
+def test_squat_signals_blocked_without_bull_market_precondition() -> None:
+    closes = _series([300.0 - i for i in range(260)])
+    row = stock_signals.compute_stock_signal_row("TEST", closes)
+
+    assert row["status"] == "ok"
+    assert row["squat_bull_market_precondition"] is False
+    assert row["squat_ambush_near_ma100_or_ma200"] is False
+    assert row["squat_dca_below_ma100"] is False
+    assert row["squat_last_stand_ma200"] is False

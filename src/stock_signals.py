@@ -8,6 +8,8 @@ from typing import Any
 import pandas as pd
 
 DEFAULT_BENCHMARK_TICKER = "QQQ"
+SQUAT_NEAR_ZONE_MIN_GAP = 0.02
+SQUAT_NEAR_ZONE_MAX_GAP = 0.03
 
 STOCK_TRIGGER_COLUMNS = [
     "entry_bullish_alignment",
@@ -17,6 +19,9 @@ STOCK_TRIGGER_COLUMNS = [
     "exit_rsi_overbought",
     "rsi_bearish_divergence",
     "strong_sell_weak_strength",
+    "squat_ambush_near_ma100_or_ma200",
+    "squat_dca_below_ma100",
+    "squat_last_stand_ma200",
 ]
 
 STOCK_SIGNAL_COLUMNS = [
@@ -31,6 +36,10 @@ STOCK_SIGNAL_COLUMNS = [
     "sma50",
     "sma100",
     "sma200",
+    "squat_bull_market_precondition",
+    "squat_price_dropping",
+    "squat_gap_to_sma100_pct",
+    "squat_gap_to_sma200_pct",
     "rsi14",
     "benchmark_price",
     "benchmark_sma50",
@@ -284,11 +293,25 @@ def compute_stock_signal_row(
         price_basis = "intraday"
 
     sma14 = float(compute_sma(evaluated, 14).iloc[-1])
-    sma50 = float(compute_sma(evaluated, 50).iloc[-1])
-    sma100 = float(compute_sma(evaluated, 100).iloc[-1])
-    sma200 = float(compute_sma(evaluated, 200).iloc[-1])
+    sma50_series = compute_sma(evaluated, 50)
+    sma100_series = compute_sma(evaluated, 100)
+    sma200_series = compute_sma(evaluated, 200)
+    sma50 = float(sma50_series.iloc[-1])
+    sma100 = float(sma100_series.iloc[-1])
+    sma200 = float(sma200_series.iloc[-1])
     rsi14_series = compute_rsi14(evaluated, period=14)
     rsi14 = float(rsi14_series.iloc[-1])
+
+    if price_basis == "intraday":
+        clean_sma100_series = compute_sma(clean, 100)
+        clean_sma200_series = compute_sma(clean, 200)
+        prev_price = float(clean.iloc[-1]) if len(clean) >= 1 else float("nan")
+        prev_sma100 = float(clean_sma100_series.iloc[-1]) if len(clean_sma100_series) >= 1 else float("nan")
+        prev_sma200 = float(clean_sma200_series.iloc[-1]) if len(clean_sma200_series) >= 1 else float("nan")
+    else:
+        prev_price = float(evaluated.iloc[-2]) if len(evaluated) >= 2 else float("nan")
+        prev_sma100 = float(sma100_series.iloc[-2]) if len(sma100_series) >= 2 else float("nan")
+        prev_sma200 = float(sma200_series.iloc[-2]) if len(sma200_series) >= 2 else float("nan")
 
     entry_bullish_alignment = _safe_gt(sma14, sma50) and (_safe_gt(sma50, sma100) or _safe_gt(sma50, sma200))
     exit_price_below_sma50 = _safe_lt(price, sma50)
@@ -296,6 +319,46 @@ def compute_stock_signal_row(
     exit_death_cross_50_lt_200 = _safe_lt(sma50, sma200)
     exit_rsi_overbought = _is_valid_number(rsi14) and float(rsi14) > 80.0
     rsi_bearish_divergence = detect_bearish_rsi_divergence(evaluated, rsi14_series)
+
+    squat_bull_market_precondition = _safe_gt(sma200, prev_sma200) or _safe_gt(sma50, sma200)
+    squat_price_dropping = _safe_lt(price, prev_price)
+    squat_gap_to_sma100_pct = float("nan")
+    if _is_valid_number(sma100) and float(sma100) != 0:
+        squat_gap_to_sma100_pct = (price - float(sma100)) / float(sma100)
+
+    squat_gap_to_sma200_pct = float("nan")
+    if _is_valid_number(sma200) and float(sma200) != 0:
+        squat_gap_to_sma200_pct = (price - float(sma200)) / float(sma200)
+
+    near_ma100_zone = (
+        _is_valid_number(squat_gap_to_sma100_pct)
+        and SQUAT_NEAR_ZONE_MIN_GAP <= float(squat_gap_to_sma100_pct) <= SQUAT_NEAR_ZONE_MAX_GAP
+    )
+    near_ma200_zone = (
+        _is_valid_number(squat_gap_to_sma200_pct)
+        and SQUAT_NEAR_ZONE_MIN_GAP <= float(squat_gap_to_sma200_pct) <= SQUAT_NEAR_ZONE_MAX_GAP
+    )
+    squat_ambush_near_ma100_or_ma200 = (
+        bool(squat_bull_market_precondition)
+        and bool(squat_price_dropping)
+        and (near_ma100_zone or near_ma200_zone)
+    )
+    prev_above_or_at_sma100 = (
+        _is_valid_number(prev_price)
+        and _is_valid_number(prev_sma100)
+        and float(prev_price) >= float(prev_sma100)
+    )
+    squat_dca_below_ma100 = (
+        bool(squat_bull_market_precondition)
+        and _safe_lt(price, sma100)
+        and prev_above_or_at_sma100
+    )
+    squat_last_stand_ma200 = (
+        bool(squat_bull_market_precondition)
+        and _is_valid_number(sma200)
+        and _is_valid_number(price)
+        and float(price) <= float(sma200)
+    )
 
     relative = {
         "benchmark_ticker": benchmark_ticker,
@@ -340,6 +403,11 @@ def compute_stock_signal_row(
         exit_rsi_overbought = False
         rsi_bearish_divergence = False
         strong_sell_weak_strength = False
+        squat_bull_market_precondition = False
+        squat_price_dropping = False
+        squat_ambush_near_ma100_or_ma200 = False
+        squat_dca_below_ma100 = False
+        squat_last_stand_ma200 = False
         relative["rs_structural_divergence"] = False
         relative["rs_trend_down"] = False
         relative["rs_negative_alpha"] = False
@@ -366,6 +434,10 @@ def compute_stock_signal_row(
         "sma50": sma50,
         "sma100": sma100,
         "sma200": sma200,
+        "squat_bull_market_precondition": bool(squat_bull_market_precondition),
+        "squat_price_dropping": bool(squat_price_dropping),
+        "squat_gap_to_sma100_pct": squat_gap_to_sma100_pct,
+        "squat_gap_to_sma200_pct": squat_gap_to_sma200_pct,
         "rsi14": rsi14,
         "benchmark_price": relative["benchmark_price"],
         "benchmark_sma50": relative["benchmark_sma50"],
@@ -384,6 +456,9 @@ def compute_stock_signal_row(
         "exit_rsi_overbought": bool(exit_rsi_overbought),
         "rsi_bearish_divergence": bool(rsi_bearish_divergence),
         "strong_sell_weak_strength": bool(strong_sell_weak_strength),
+        "squat_ambush_near_ma100_or_ma200": bool(squat_ambush_near_ma100_or_ma200),
+        "squat_dca_below_ma100": bool(squat_dca_below_ma100),
+        "squat_last_stand_ma200": bool(squat_last_stand_ma200),
         "source": source,
         "stale_days": int(stale_days),
         "status": status,
