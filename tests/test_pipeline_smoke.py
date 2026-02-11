@@ -305,7 +305,7 @@ def test_update_signal_event_history_writes_macro_rows_for_triggered_and_cleared
     assert set(events["signal_id"].tolist()) == {"ten_year_yield_gte_4_4", "ten_year_yield_gte_5_0"}
     assert set(events["state_transition"].tolist()) == {"extreme_pressure_bond_opportunity -> equity_pressure_zone"}
     assert set(events["subject_id"].tolist()) == {"ten_year_yield"}
-    assert all(bool(value) for value in events["event_timestamp_pt"].tolist())
+    assert all(bool(value) for value in events["event_timestamp_et"].tolist())
 
 
 def test_update_signal_event_history_writes_stock_rows_for_triggered_and_cleared(tmp_path: Path) -> None:
@@ -362,7 +362,7 @@ def test_update_signal_event_history_prunes_to_exact_7_day_window(tmp_path: Path
     def _row(timestamp_utc: str) -> dict[str, object]:
         return {
             "event_timestamp_utc": timestamp_utc,
-            "event_timestamp_pt": "2026-02-01 00:00:00 PST",
+            "event_timestamp_et": "2026-02-01 03:00:00 EST",
             "domain": "macro",
             "event_type": "triggered",
             "subject_id": "hiring_rate",

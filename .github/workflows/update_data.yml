@@ -2,8 +2,8 @@ name: Update Macro Data Cache
 
 on:
   schedule:
-    - cron: "30 23 * * 1-5"
-    - cron: "30 0 * * 2-6"
+    - cron: "30 20 * * 1-5"
+    - cron: "30 21 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Evaluate Pacific schedule guard
+      - name: Evaluate Eastern schedule guard
         id: guard
         shell: bash
         run: |
@@ -24,14 +24,14 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             should_run="true"
           else
-            local_dow="$(TZ=America/Los_Angeles date +%u)"
-            local_hm="$(TZ=America/Los_Angeles date +%H:%M)"
+            local_dow="$(TZ=America/New_York date +%u)"
+            local_hm="$(TZ=America/New_York date +%H:%M)"
             if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_hm" == "16:30" ]]; then
               should_run="true"
             fi
           fi
 
-          echo "Pacific weekday=${local_dow:-manual}, time=${local_hm:-manual}"
+          echo "Eastern weekday=${local_dow:-manual}, time=${local_hm:-manual}"
           echo "run_pipeline=$should_run" >> "$GITHUB_OUTPUT"
 
       - name: Setup Python
@@ -125,8 +125,8 @@ jobs:
           fi
 
           timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          timestamp_pt="$(TZ=America/Los_Angeles date '+%Y-%m-%d %H:%M:%S %Z')"
-          export status_emoji status_title change_note short_sha status_color timestamp_utc timestamp_pt
+          timestamp_et="$(TZ=America/New_York date '+%Y-%m-%d %H:%M:%S %Z')"
+          export status_emoji status_title change_note short_sha status_color timestamp_utc timestamp_et
 
           payload="$(python3 - <<'PY'
           import json
@@ -147,7 +147,7 @@ jobs:
           run_attempt = os.getenv("RUN_ATTEMPT", "1")
           run_url = os.getenv("RUN_URL", "")
           timestamp_utc = os.getenv("timestamp_utc", "")
-          timestamp_pt = os.getenv("timestamp_pt", "")
+          timestamp_et = os.getenv("timestamp_et", "")
           data_changed = os.getenv("DATA_CHANGED", "unknown")
 
           payload = {
@@ -167,7 +167,7 @@ jobs:
                           {"name": "Data Changed", "value": data_changed, "inline": True},
                           {"name": "Commit SHA", "value": short_sha, "inline": True},
                           {"name": "Status", "value": workflow_status, "inline": True},
-                          {"name": "Completed (PT)", "value": timestamp_pt, "inline": False},
+                          {"name": "Completed (ET)", "value": timestamp_et, "inline": False},
                       ],
                       "timestamp": timestamp_utc,
                   }
@@ -184,4 +184,4 @@ jobs:
       - name: Skip non-target schedule run
         if: steps.guard.outputs.run_pipeline != 'true'
         run: |
-          echo "Skipping run: not 4:30 PM Pacific weekday."
+          echo "Skipping run: not 4:30 PM Eastern weekday."

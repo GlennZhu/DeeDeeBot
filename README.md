@@ -27,8 +27,8 @@ Dashboard and pipeline that track:
 - `data/derived/stock_watchlist.csv`: tracked watchlist symbols
 - `data/derived/stock_signals_latest.csv`: latest stock signal states (includes intraday quote freshness fields)
 - `data/derived/signal_events_7d.csv`: rolling 7-day signal event history (`triggered` and `cleared`)
-- `.github/workflows/update_data.yml`: weekday scheduled refresh (Pacific time guard)
-- `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Pacific market-hours guard)
+- `.github/workflows/update_data.yml`: weekday scheduled refresh (Eastern time guard)
+- `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Eastern extended-hours guard)
 
 ## Stock Watchlist Metrics
 
@@ -122,10 +122,10 @@ pytest
 
 ## GitHub Actions Schedule
 
-Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded at runtime to run only when local Pacific time is exactly **4:30 PM on weekdays**:
+Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded at runtime to run only when local Eastern time is exactly **4:30 PM on weekdays**:
 
-- `30 23 * * 1-5`
-- `30 0 * * 2-6`
+- `30 20 * * 1-5`
+- `30 21 * * 1-5`
 
 It executes `python -m src.pipeline --macro-only`.
 
@@ -133,6 +133,6 @@ Notifications:
 
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 
-Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and is guarded at runtime to run only during Pacific regular market hours (**09:30-16:00, weekdays**). It executes `python -m src.pipeline --stock-only`.
+Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and is guarded at runtime to run only during Eastern extended hours (**07:00-20:00, weekdays**). It executes `python -m src.pipeline --stock-only`.
 
 `workflow_dispatch` remains available for both workflows.

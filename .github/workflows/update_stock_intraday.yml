@@ -15,7 +15,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Evaluate Pacific market-hours guard
+      - name: Evaluate Eastern extended-hours guard
         id: guard
         shell: bash
         run: |
@@ -27,19 +27,19 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             should_run="true"
           else
-            local_dow="$(TZ=America/Los_Angeles date +%u)"
-            local_hour="$(TZ=America/Los_Angeles date +%H)"
-            local_minute="$(TZ=America/Los_Angeles date +%M)"
+            local_dow="$(TZ=America/New_York date +%u)"
+            local_hour="$(TZ=America/New_York date +%H)"
+            local_minute="$(TZ=America/New_York date +%M)"
             local_hm="${local_hour}:${local_minute}"
             local_minutes=$((10#$local_hour * 60 + 10#$local_minute))
 
-            # US regular market session (PT): 09:30 through 16:00, weekdays only.
-            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_minutes" -ge 570 && "$local_minutes" -le 960 && $((local_minutes % 15)) -eq 0 ]]; then
+            # US extended market session (ET): 07:00 through 20:00, weekdays only.
+            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_minutes" -ge 420 && "$local_minutes" -le 1200 ]]; then
               should_run="true"
             fi
           fi
 
-          echo "Pacific weekday=${local_dow}, time=${local_hm}, minute_of_day=${local_minutes}"
+          echo "Eastern weekday=${local_dow}, time=${local_hm}, minute_of_day=${local_minutes}"
           echo "run_pipeline=$should_run" >> "$GITHUB_OUTPUT"
 
       - name: Setup Python
@@ -76,4 +76,4 @@ jobs:
       - name: Skip non-market-hours run
         if: steps.guard.outputs.run_pipeline != 'true'
         run: |
-          echo "Skipping intraday stock run: outside 9:30 AM-4:00 PM Pacific weekdays."
+          echo "Skipping intraday stock run: outside 7:00 AM-8:00 PM Eastern weekdays."

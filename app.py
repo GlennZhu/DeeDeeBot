@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -30,7 +31,7 @@ HISTORY_OPTIONS = {
     "All available": None,
 }
 
-PST = timezone(timedelta(hours=-8), name="PST")
+EASTERN_TZ = ZoneInfo("America/New_York")
 
 STATE_COLORS = {
     "long_environment": "#188038",
@@ -144,7 +145,7 @@ def _format_price_delta(change: object, change_pct: object, digits: int = 2) -> 
     return f"{float(change):+.{digits}f} ({float(change_pct) * 100:+.{digits}f}%)"
 
 
-def _format_pst_timestamp(value: object) -> str:
+def _format_et_timestamp(value: object) -> str:
     if pd.isna(value):
         return "N/A"
     try:
@@ -155,7 +156,7 @@ def _format_pst_timestamp(value: object) -> str:
         ts = ts.tz_localize("UTC")
     else:
         ts = ts.tz_convert("UTC")
-    return ts.tz_convert(PST).strftime("%Y-%m-%d %H:%M:%S PST")
+    return ts.tz_convert(EASTERN_TZ).strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
 def _format_age_seconds(value: object) -> str:
@@ -381,10 +382,10 @@ def _render_macro_tab(selected_window: str) -> None:
 
     if "last_updated_utc" in snapshot.columns and not snapshot["last_updated_utc"].dropna().empty:
         last_update = snapshot["last_updated_utc"].dropna().max()
-        st.info(f"Last successful macro update (PST): {_format_pst_timestamp(last_update)}")
+        st.info(f"Last successful macro update (ET): {_format_et_timestamp(last_update)}")
     elif "last_updated_utc" in signals.columns and not signals["last_updated_utc"].dropna().empty:
         last_update = signals["last_updated_utc"].dropna().max()
-        st.info(f"Last successful macro update (PST): {_format_pst_timestamp(last_update)}")
+        st.info(f"Last successful macro update (ET): {_format_et_timestamp(last_update)}")
 
     available_keys = set(snapshot["metric_key"].unique()) if "metric_key" in snapshot.columns else set()
     missing = [key for key in METRIC_ORDER if key not in available_keys]
@@ -490,8 +491,8 @@ def _render_stock_tab() -> None:
 
     if "last_updated_utc" in stock_signals.columns and not stock_signals["last_updated_utc"].dropna().empty:
         st.info(
-            "Last successful stock update (PST): "
-            f"{_format_pst_timestamp(stock_signals['last_updated_utc'].dropna().max())}"
+            "Last successful stock update (ET): "
+            f"{_format_et_timestamp(stock_signals['last_updated_utc'].dropna().max())}"
         )
 
     stock_signals["ticker"] = stock_signals["ticker"].astype(str).str.upper()
@@ -541,7 +542,7 @@ def _render_stock_tab() -> None:
         )
         card.caption(
             (
-                f"Intraday quote (PST): {_format_pst_timestamp(row.get('intraday_quote_timestamp_utc'))} | "
+                f"Intraday quote (ET): {_format_et_timestamp(row.get('intraday_quote_timestamp_utc'))} | "
                 f"Quote age: {_format_age_seconds(row.get('intraday_quote_age_seconds'))}"
             )
         )
@@ -572,7 +573,7 @@ def _render_signal_history_tab() -> None:
 
     required_columns = [
         "event_timestamp_utc",
-        "event_timestamp_pt",
+        "event_timestamp_et",
         "domain",
         "event_type",
         "subject_id",
@@ -587,6 +588,8 @@ def _render_signal_history_tab() -> None:
         "status",
         "details",
     ]
+    if "event_timestamp_et" not in signal_events.columns and "event_timestamp_pt" in signal_events.columns:
+        signal_events["event_timestamp_et"] = signal_events["event_timestamp_pt"]
     for col in required_columns:
         if col not in signal_events.columns:
             signal_events[col] = ""
@@ -610,7 +613,7 @@ def _render_signal_history_tab() -> None:
     signal_events["event_type"] = signal_events["event_type"].astype(str).str.strip().str.lower()
     signal_events["_event_ts"] = event_timestamps
     signal_events["event_timestamp_utc"] = event_timestamps.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    signal_events["event_timestamp_pt"] = signal_events["event_timestamp_utc"].apply(_format_pst_timestamp)
+    signal_events["event_timestamp_et"] = signal_events["event_timestamp_utc"].apply(_format_et_timestamp)
     signal_events["headline"] = signal_events.apply(_event_headline, axis=1)
     signal_events["message"] = signal_events.apply(_event_message, axis=1)
     signal_events["domain_display"] = signal_events["domain"].map(DOMAIN_LABELS).fillna(signal_events["domain"].str.title())
@@ -675,7 +678,7 @@ def _render_signal_history_tab() -> None:
             header_cols[0].markdown(_signal_badge(event_label, event_color), unsafe_allow_html=True)
             header_cols[1].markdown(_signal_badge(domain_label, domain_color), unsafe_allow_html=True)
             header_cols[2].markdown(f"**{_clean_event_text(row.get('headline'))}**")
-            header_cols[3].caption(_clean_event_text(row.get("event_timestamp_pt")) or "N/A")
+            header_cols[3].caption(_clean_event_text(row.get("event_timestamp_et")) or "N/A")
             message = _clean_event_text(row.get("message"))
             if message:
                 st.caption(message)

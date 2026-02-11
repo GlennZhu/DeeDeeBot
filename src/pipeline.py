@@ -36,7 +36,7 @@ SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
 SIGNAL_EVENT_RETENTION_DAYS = 7
 SIGNAL_EVENT_COLUMNS = [
     "event_timestamp_utc",
-    "event_timestamp_pt",
+    "event_timestamp_et",
     "domain",
     "event_type",
     "subject_id",
@@ -51,6 +51,7 @@ SIGNAL_EVENT_COLUMNS = [
     "status",
     "details",
 ]
+LEGACY_SIGNAL_EVENT_TIMESTAMP_COLUMN = "event_timestamp_pt"
 DEFAULT_STOCK_BENCHMARK = "QQQ"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
     {"ticker": "GOOG", "benchmark": DEFAULT_STOCK_BENCHMARK},
@@ -188,13 +189,13 @@ def _empty_signal_events_frame() -> pd.DataFrame:
     return pd.DataFrame(columns=SIGNAL_EVENT_COLUMNS)
 
 
-def _format_pt_timestamp_from_utc(raw_value: str) -> str:
+def _format_et_timestamp_from_utc(raw_value: str) -> str:
     ts = pd.Timestamp(raw_value)
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
     else:
         ts = ts.tz_convert("UTC")
-    return ts.tz_convert("America/Los_Angeles").strftime("%Y-%m-%d %H:%M:%S %Z")
+    return ts.tz_convert("America/New_York").strftime("%Y-%m-%d %H:%M:%S %Z")
 
 
 def _event_cell_value(raw_value: Any) -> Any:
@@ -213,6 +214,8 @@ def _load_signal_event_history(path: Path) -> pd.DataFrame:
         return _empty_signal_events_frame()
 
     out = frame.copy()
+    if "event_timestamp_et" not in out.columns and LEGACY_SIGNAL_EVENT_TIMESTAMP_COLUMN in out.columns:
+        out["event_timestamp_et"] = out[LEGACY_SIGNAL_EVENT_TIMESTAMP_COLUMN]
     for col in SIGNAL_EVENT_COLUMNS:
         if col not in out.columns:
             out[col] = ""
@@ -251,7 +254,7 @@ def _prune_signal_event_history(frame: pd.DataFrame, now_iso: str) -> pd.DataFra
 
 def _build_macro_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -> list[dict[str, Any]]:
     event_rows: list[dict[str, Any]] = []
-    event_timestamp_pt = _format_pt_timestamp_from_utc(now_iso)
+    event_timestamp_et = _format_et_timestamp_from_utc(now_iso)
 
     for event in events:
         metric_key = str(event.get("metric_key", "")).strip()
@@ -276,7 +279,7 @@ def _build_macro_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -
                 event_rows.append(
                     {
                         "event_timestamp_utc": now_iso,
-                        "event_timestamp_pt": event_timestamp_pt,
+                        "event_timestamp_et": event_timestamp_et,
                         "domain": "macro",
                         "event_type": event_type,
                         "subject_id": metric_key,
@@ -297,7 +300,7 @@ def _build_macro_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -
 
 def _build_stock_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -> list[dict[str, Any]]:
     event_rows: list[dict[str, Any]] = []
-    event_timestamp_pt = _format_pt_timestamp_from_utc(now_iso)
+    event_timestamp_et = _format_et_timestamp_from_utc(now_iso)
 
     for event in events:
         ticker = _normalize_ticker(event.get("ticker", ""))
@@ -316,7 +319,7 @@ def _build_stock_signal_event_rows(events: list[dict[str, Any]], now_iso: str) -
         event_rows.append(
             {
                 "event_timestamp_utc": now_iso,
-                "event_timestamp_pt": event_timestamp_pt,
+                "event_timestamp_et": event_timestamp_et,
                 "domain": "stock",
                 "event_type": event_type,
                 "subject_id": ticker,
