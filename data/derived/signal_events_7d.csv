@@ -2,3 +2,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-02-10T22:49:16Z,2026-02-10 14:49:16 PST,stock,triggered,AVGO,AVGO,QQQ,exit_death_cross_50_lt_100,Death cross: SMA50 < SMA100,2026-02-10,,340.44,,ok,
 2026-02-10T22:49:16Z,2026-02-10 14:49:16 PST,stock,cleared,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-10,,611.25,,ok,
 2026-02-11T19:19:35Z,2026-02-11 14:19:35 EST,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-10,,140.34,,ok,
+2026-02-12T15:31:23Z,2026-02-12 10:31:23 EST,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-11,,136.885,,ok,
