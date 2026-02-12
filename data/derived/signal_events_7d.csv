@@ -4,3 +4,5 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-02-11T19:19:35Z,2026-02-11 14:19:35 EST,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-10,,140.34,,ok,
 2026-02-12T15:31:23Z,2026-02-12 10:31:23 EST,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-11,,136.885,,ok,
 2026-02-12T17:40:35Z,2026-02-12 12:40:35 EST,stock,triggered,NVDA,NVDA,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-11,,189.57,,ok,
+2026-02-12T19:37:23Z,2026-02-12 14:37:23 EST,stock,triggered,MSFT,MSFT,QQQ,squat_last_stand_ma200,⚠️ Critical Support: Testing MA200.,2026-02-11,,405.12,,ok,
+2026-02-12T19:37:23Z,2026-02-12 14:37:23 EST,stock,triggered,NVDA,NVDA,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-11,,189.54,,ok,
