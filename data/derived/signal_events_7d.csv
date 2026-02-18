@@ -24,3 +24,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-02-17T21:22:51Z,2026-02-17 16:22:51 EST,stock,triggered,GOOG,GOOG,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-13,,302.82,,ok,
 2026-02-18T15:32:28Z,2026-02-18 10:32:28 EST,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-17,,140.66,,ok,
 2026-02-18T15:32:28Z,2026-02-18 10:32:28 EST,stock,triggered,MSFT,MSFT,QQQ,squat_last_stand_ma200,⚠️ Critical Support: Testing MA200.,2026-02-17,,400.67,,ok,
+2026-02-18T18:27:53Z,2026-02-18 13:27:53 EST,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-17,,140.6701,,ok,
