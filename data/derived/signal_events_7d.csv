@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-02-12T22:54:15Z,2026-02-12 17:54:15 EST,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-12,,135.12,,ok,
 2026-02-13T15:06:54Z,2026-02-13 10:06:54 EST,stock,triggered,MSFT,MSFT,QQQ,squat_last_stand_ma200,⚠️ Critical Support: Testing MA200.,2026-02-12,,403.175,,ok,
 2026-02-13T15:06:54Z,2026-02-13 10:06:54 EST,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Hard sell: price < SMA50,2026-02-12,,184.09,,ok,
 2026-02-13T15:06:54Z,2026-02-13 10:06:54 EST,stock,triggered,NVDA,NVDA,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-12,,184.09,,ok,
