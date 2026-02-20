@@ -28,3 +28,5 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-02-20T16:07:04Z,2026-02-20 11:07:04 EST,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-19,,137.2,,ok,
 2026-02-20T16:07:04Z,2026-02-20 11:07:04 EST,stock,triggered,MSFT,MSFT,QQQ,squat_last_stand_ma200,⚠️ Critical Support: Testing MA200.,2026-02-19,,399.355,,ok,
 2026-02-20T17:29:33Z,2026-02-20 12:29:33 EST,stock,cleared,MSFT,MSFT,QQQ,squat_last_stand_ma200,⚠️ Critical Support: Testing MA200.,2026-02-19,,397.5,,ok,
+2026-02-20T18:02:07Z,2026-02-20 13:02:07 EST,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-19,,136.52,,ok,
+2026-02-20T18:02:07Z,2026-02-20 13:02:07 EST,stock,triggered,EWY,EWY,QQQ,entry_bullish_alignment,Entry signal: bullish alignment,2026-02-19,,140.09,,ok,
