@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -662,3 +663,35 @@ def test_notify_new_stock_triggers_posts_clear_to_discord(monkeypatch) -> None:
     assert payload["url"] == "https://example.com/webhook"
     assert "NVDA" in payload["content"]
     assert "Hard sell: price < SMA50 cleared" in payload["content"]
+
+
+def test_post_discord_message_sets_cloudflare_compatible_headers(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        def __enter__(self) -> "_FakeResponse":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            del exc_type, exc, tb
+            return False
+
+    def fake_urlopen(req, timeout: int = 10):
+        captured["req"] = req
+        captured["timeout"] = timeout
+        return _FakeResponse()
+
+    monkeypatch.setattr(pipeline.request, "urlopen", fake_urlopen)
+
+    pipeline._post_discord_message("https://example.com/webhook", "hello")
+
+    req = captured["req"]
+    assert req.full_url == "https://example.com/webhook"
+    assert req.get_method() == "POST"
+    assert captured["timeout"] == 10
+
+    header_map = {k.lower(): v for k, v in req.header_items()}
+    assert header_map["content-type"] == "application/json"
+    assert header_map["accept"] == "application/json"
+    assert header_map["user-agent"].startswith("BingBingBot/")
+    assert json.loads(req.data.decode("utf-8")) == {"content": "hello"}

@@ -8,7 +8,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib import request
+from urllib import error, request
 
 import pandas as pd
 
@@ -760,11 +760,21 @@ def _post_discord_message(webhook_url: str, content: str) -> None:
     req = request.Request(
         webhook_url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "BingBingBot/1.0 (GitHub Actions)",
+        },
         method="POST",
     )
-    with request.urlopen(req, timeout=10):
-        return
+    try:
+        with request.urlopen(req, timeout=10):
+            return
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace").strip()
+        if detail:
+            raise RuntimeError(f"Discord webhook request failed: HTTP {exc.code}; body={detail}") from exc
+        raise RuntimeError(f"Discord webhook request failed: HTTP {exc.code}") from exc
 
 
 def _notify_threshold_events(events: list[dict[str, Any]], now_iso: str) -> None:
