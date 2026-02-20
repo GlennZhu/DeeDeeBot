@@ -317,7 +317,7 @@ def test_update_signal_event_history_writes_stock_rows_for_triggered_and_cleared
             "ticker": "NVDA",
             "benchmark_ticker": "QQQ",
             "trigger_id": "strong_sell_weak_strength",
-            "trigger_label": "Strong Sell: Relative weakness vs benchmark",
+            "trigger_label": "Strong Sell: Underperforming vs benchmark",
             "event_type": "triggered",
             "as_of_date": "2026-02-10",
             "price": 120.5,

@@ -114,7 +114,7 @@ STOCK_TRIGGER_LABELS: dict[str, str] = {
     "exit_death_cross_50_lt_200": "Risk: Death cross (SMA50 < SMA200)",
     "exit_rsi_overbought": "Risk: RSI14 overbought (> 80)",
     "rsi_bearish_divergence": "Risk: Bearish RSI divergence",
-    "strong_sell_weak_strength": "Strong Sell: Relative weakness vs benchmark",
+    "strong_sell_weak_strength": "Strong Sell: Underperforming vs benchmark",
     "squat_ambush_near_ma100_or_ma200": "🟢 Buy-Zone Watch: 2%-3% above MA100/200",
     "squat_dca_below_ma100": "🔵 DCA Zone: Broke below MA100",
     "squat_last_stand_ma200": "⚠️ Critical Support (MA200): Within +1% / -2%",

@@ -54,7 +54,7 @@ STOCK_TRIGGER_LABELS = {
     "exit_death_cross_50_lt_200": "Risk: Death Cross (50<200)",
     "exit_rsi_overbought": "Risk: RSI14 Overbought (>80)",
     "rsi_bearish_divergence": "Risk: Bearish RSI Divergence",
-    "strong_sell_weak_strength": "Strong Sell: Relative Weakness",
+    "strong_sell_weak_strength": "Strong Sell: Underperforming vs Benchmark",
     "squat_ambush_near_ma100_or_ma200": "🟢 Buy-Zone Watch (MA100/200)",
     "squat_dca_below_ma100": "🔵 DCA Zone (Below MA100)",
     "squat_last_stand_ma200": "⚠️ Critical Support (MA200)",
@@ -549,7 +549,7 @@ def _render_stock_tab() -> None:
             )
         )
         if "relative_strength_reasons" in row and pd.notna(row.get("relative_strength_reasons")):
-            card.caption(f"RS reasons: {row.get('relative_strength_reasons')}")
+            card.caption(f"Benchmark-relative reasons: {row.get('relative_strength_reasons')}")
 
         active_badges: list[str] = []
         for trigger_col, label in STOCK_TRIGGER_LABELS.items():
