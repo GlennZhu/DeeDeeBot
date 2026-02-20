@@ -108,16 +108,17 @@ NEGATIVE_MACRO_THRESHOLD_IDS: set[str] = {
 }
 
 STOCK_TRIGGER_LABELS: dict[str, str] = {
-    "entry_bullish_alignment": "Entry signal: bullish alignment",
-    "exit_price_below_sma50": "Hard sell: price < SMA50",
-    "exit_death_cross_50_lt_100": "Death cross: SMA50 < SMA100",
-    "exit_death_cross_50_lt_200": "Death cross: SMA50 < SMA200",
-    "exit_rsi_overbought": "RSI overbought: RSI14 > 80",
-    "rsi_bearish_divergence": "RSI bearish divergence",
-    "strong_sell_weak_strength": "Strong sell: comparative relative weakness",
-    "squat_ambush_near_ma100_or_ma200": "🟢 Approaching Buy Zone: Price is near MA100/200.",
-    "squat_dca_below_ma100": "🔵 Price Broken MA100: Activate DCA Mode.",
-    "squat_last_stand_ma200": "⚠️ Critical Support: Testing MA200.",
+    "entry_bullish_alignment": "Entry: Trend alignment (SMA14 > SMA50 > SMA100/200)",
+    "exit_price_below_sma50": "Exit: Price Below SMA50",
+    "exit_death_cross_50_lt_100": "Risk: Death cross (SMA50 < SMA100)",
+    "exit_death_cross_50_lt_200": "Risk: Death cross (SMA50 < SMA200)",
+    "exit_rsi_overbought": "Risk: RSI14 overbought (> 80)",
+    "rsi_bearish_divergence": "Risk: Bearish RSI divergence",
+    "strong_sell_weak_strength": "Strong Sell: Relative weakness vs benchmark",
+    "squat_ambush_near_ma100_or_ma200": "🟢 Buy-Zone Watch: 2%-3% above MA100/200",
+    "squat_dca_below_ma100": "🔵 DCA Zone: Broke below MA100",
+    "squat_last_stand_ma200": "⚠️ Critical Support (MA200): Within +1% / -2%",
+    "squat_breakdown_below_ma200": "🚨 Breakdown (MA200): More than 2% below",
 }
 
 NEGATIVE_STOCK_TRIGGER_IDS: set[str] = {
@@ -129,6 +130,7 @@ NEGATIVE_STOCK_TRIGGER_IDS: set[str] = {
     "strong_sell_weak_strength",
     "squat_dca_below_ma100",
     "squat_last_stand_ma200",
+    "squat_breakdown_below_ma200",
 }
 
 

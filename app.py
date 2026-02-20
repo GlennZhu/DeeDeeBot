@@ -48,16 +48,17 @@ STATE_COLORS = {
 }
 
 STOCK_TRIGGER_LABELS = {
-    "entry_bullish_alignment": "Entry: Bullish Alignment",
-    "exit_price_below_sma50": "Exit: Price < SMA50",
-    "exit_death_cross_50_lt_100": "Risk: SMA50 < SMA100",
-    "exit_death_cross_50_lt_200": "Risk: SMA50 < SMA200",
-    "exit_rsi_overbought": "Risk: RSI14 > 80",
-    "rsi_bearish_divergence": "Bearish RSI Divergence",
-    "strong_sell_weak_strength": "Strong Sell: Weak Relative Strength",
-    "squat_ambush_near_ma100_or_ma200": "🟢 Approaching Buy Zone",
-    "squat_dca_below_ma100": "🔵 DCA Mode (MA100 Broken)",
+    "entry_bullish_alignment": "Entry: Trend Alignment",
+    "exit_price_below_sma50": "Exit: Price Below SMA50",
+    "exit_death_cross_50_lt_100": "Risk: Death Cross (50<100)",
+    "exit_death_cross_50_lt_200": "Risk: Death Cross (50<200)",
+    "exit_rsi_overbought": "Risk: RSI14 Overbought (>80)",
+    "rsi_bearish_divergence": "Risk: Bearish RSI Divergence",
+    "strong_sell_weak_strength": "Strong Sell: Relative Weakness",
+    "squat_ambush_near_ma100_or_ma200": "🟢 Buy-Zone Watch (MA100/200)",
+    "squat_dca_below_ma100": "🔵 DCA Zone (Below MA100)",
     "squat_last_stand_ma200": "⚠️ Critical Support (MA200)",
+    "squat_breakdown_below_ma200": "🚨 Breakdown Below MA200",
 }
 
 STOCK_TRIGGER_COLORS = {
@@ -71,6 +72,7 @@ STOCK_TRIGGER_COLORS = {
     "squat_ambush_near_ma100_or_ma200": "#188038",
     "squat_dca_below_ma100": "#1f6feb",
     "squat_last_stand_ma200": "#b26a00",
+    "squat_breakdown_below_ma200": "#b3261e",
 }
 
 MACRO_SIGNAL_LABELS = {

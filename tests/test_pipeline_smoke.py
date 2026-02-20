@@ -160,6 +160,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "squat_ambush_near_ma100_or_ma200",
         "squat_dca_below_ma100",
         "squat_last_stand_ma200",
+        "squat_breakdown_below_ma200",
         "source",
         "stale_days",
         "status",
@@ -316,7 +317,7 @@ def test_update_signal_event_history_writes_stock_rows_for_triggered_and_cleared
             "ticker": "NVDA",
             "benchmark_ticker": "QQQ",
             "trigger_id": "strong_sell_weak_strength",
-            "trigger_label": "Strong sell: comparative relative weakness",
+            "trigger_label": "Strong Sell: Relative weakness vs benchmark",
             "event_type": "triggered",
             "as_of_date": "2026-02-10",
             "price": 120.5,
@@ -327,7 +328,7 @@ def test_update_signal_event_history_writes_stock_rows_for_triggered_and_cleared
             "ticker": "NVDA",
             "benchmark_ticker": "QQQ",
             "trigger_id": "exit_price_below_sma50",
-            "trigger_label": "Hard sell: price < SMA50",
+            "trigger_label": "Exit: Price Below SMA50",
             "event_type": "cleared",
             "as_of_date": "2026-02-10",
             "price": 121.0,
@@ -628,7 +629,7 @@ def test_notify_new_stock_triggers_posts_to_discord(monkeypatch) -> None:
 
     assert payload["url"] == "https://example.com/webhook"
     assert "NVDA" in payload["content"]
-    assert "Entry signal: bullish alignment" in payload["content"]
+    assert "Entry: Trend alignment (SMA14 > SMA50 > SMA100/200)" in payload["content"]
 
 
 def test_notify_new_stock_triggers_posts_clear_to_discord(monkeypatch) -> None:
@@ -662,7 +663,7 @@ def test_notify_new_stock_triggers_posts_clear_to_discord(monkeypatch) -> None:
 
     assert payload["url"] == "https://example.com/webhook"
     assert "NVDA" in payload["content"]
-    assert "Hard sell: price < SMA50 cleared" in payload["content"]
+    assert "Exit: Price Below SMA50 cleared" in payload["content"]
 
 
 def test_post_discord_message_sets_cloudflare_compatible_headers(monkeypatch) -> None:

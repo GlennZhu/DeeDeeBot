@@ -59,7 +59,9 @@ For each watched ticker, the pipeline checks:
 - Gap tracking: `gap_to_ma = (price - ma) / ma` for MA100 and MA200
 - **Ambush alert** (`🟢 Approaching Buy Zone`) when price is dropping and sits `2%-3% above` MA100 or MA200
 - **DCA alert** (`🔵 Price Broken MA100`) when price crosses below MA100
-- **Last-stand alert** (`⚠️ Critical Support`) when price tests MA200
+- **Critical support alert** (`⚠️ Critical Support (MA200)`) when price is near MA200 (`+1% to -2%` gap)
+- **Breakdown alert** (`🚨 Breakdown Below MA200`) when price falls more than `2%` below MA200
+- The MA200 trend precondition uses daily-close SMA trend (not intraday-adjusted SMA) to reduce alert flicker.
 
 Alerts are sent to Discord on first trigger (`false -> true` versus previous run), and when negative signals clear (`true -> false` for risk/exit macro and stock conditions).
 Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
