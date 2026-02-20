@@ -28,3 +28,6 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-02-19T20:54:45Z,2026-02-19 15:54:45 EST,stock,triggered,GOOG,GOOG,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Approaching Buy Zone: Price is near MA100/200.,2026-02-18,,303.68,,ok,
 2026-02-19T21:19:27Z,2026-02-19 16:19:27 EST,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-18,,137.23,,ok,
 2026-02-19T21:19:27Z,2026-02-19 16:19:27 EST,stock,triggered,GOOG,GOOG,QQQ,strong_sell_weak_strength,Strong sell: comparative relative weakness,2026-02-18,,303.53,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-02-20T14:57:08Z,2026-02-20 09:57:08 EST,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 Price Broken MA100: Activate DCA Mode.,2026-02-19,,136.54,,ok,
+2026-02-20T14:57:08Z,2026-02-20 09:57:08 EST,stock,triggered,GOOG,GOOG,QQQ,entry_bullish_alignment,Entry signal: bullish alignment,2026-02-19,,309.505,,ok,
+2026-02-20T14:57:08Z,2026-02-20 09:57:08 EST,stock,cleared,GOOG,GOOG,QQQ,strong_sell_weak_strength,Strong sell: comparative relative weakness,2026-02-19,,309.505,,ok,RS_TREND_DOWN
