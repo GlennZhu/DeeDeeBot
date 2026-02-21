@@ -4,6 +4,7 @@ Dashboard and pipeline that track:
 
 - Macro regime signals (M2, Hiring, 10Y yield, Buffett indicator, Unemployment)
 - A stock watchlist with technical monitoring and first-time Discord alerts
+- A broader market scanner with automatic ticker sourcing beyond watchlist
 
 ## Stack
 
@@ -16,16 +17,20 @@ Dashboard and pipeline that track:
 
 ## Project Structure
 
-- `app.py`: Streamlit dashboard with tabs (`Macro Monitor`, `Stock Watchlist`, `Signal History (7D)`)
+- `app.py`: Streamlit dashboard with tabs (`Macro Monitor`, `Stock Watchlist`, `Market Scanner`, `Signal History (7D)`)
 - `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord alerts
 - `src/signals.py`: macro signal logic and thresholds
 - `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence/relative strength)
+- `src/stock_scanner.py`: broad-universe scanner logic (leader/trend/crossback/pullback setups)
 - `src/data_fetch.py`: FRED and Stooq fetchers (daily + intraday quote endpoint)
 - `data/raw/*.csv`: per-metric historical macro series cache
 - `data/derived/metric_snapshot.csv`: latest macro values
 - `data/derived/signals_latest.csv`: latest macro signal states
 - `data/derived/stock_watchlist.csv`: tracked watchlist symbols
 - `data/derived/stock_signals_latest.csv`: latest stock signal states (includes intraday quote freshness fields)
+- `data/derived/stock_universe.csv`: auto-sourced scanner universe (watchlist + Nasdaq Trader directories)
+- `data/derived/scanner_signals_latest.csv`: latest scanner outputs and setup scores
+- `data/derived/scanner_thesis_tags.csv`: optional narrative tags (`pain_point`, `solution`, `conviction`)
 - `data/derived/signal_events_7d.csv`: rolling 7-day signal event history (`triggered` and `cleared`)
 - `.github/workflows/update_data.yml`: weekday scheduled refresh (Eastern time guard)
 - `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Eastern extended-hours guard)
@@ -86,6 +91,36 @@ Watchlist schema:
 
 Watchlist editing is disabled in the Streamlit UI; edit `data/derived/stock_watchlist.csv` directly.
 
+## Market Scanner Logic
+
+Ticker sourcing beyond watchlist:
+
+- Pulls universe from Nasdaq Trader symbol directories (`nasdaqlisted.txt`, `otherlisted.txt`)
+- Caches universe to `data/derived/stock_universe.csv`
+- Keeps watchlist symbols pinned even if external source fetch fails
+- Refreshes universe at most once per 24 hours
+- Default breadth is tuned to scan up to 60 tickers per run
+- Intraday quote calls are prioritized for watchlist symbols (non-watchlist intraday is off by default)
+
+Scanner setups:
+
+1. Leader + right-side trend:
+- Trend established via `SMA14 > SMA50 > (SMA100 or SMA200)`
+- Relative-strength-aware leader score (`rs_ratio`, `alpha_1m`, weak-strength flags)
+
+2. Cross-back confirmation:
+- Requires MA cross-back (`SMA14` crossing above `SMA50`)
+- Requires bullish RSI divergence at lows
+- Requires "three green candles" confirmation (implemented as three consecutive higher closes)
+
+3. Bull-market pullback zones:
+- Reuses the watchlist MA100/MA200 squat zone logic for ambush/support setups
+
+Manual thesis hooks:
+
+- `scanner_thesis_tags.csv` lets you add `pain_point`, `solution`, and `conviction` (0-2 score)
+- Conviction contributes to scanner ranking (`scanner_score`)
+
 ## Local Setup
 
 ```bash
@@ -106,7 +141,17 @@ Optional flags:
 python -m src.pipeline --start-date 2011-01-01 --lookback-years 15
 python -m src.pipeline --macro-only
 python -m src.pipeline --stock-only
+python -m src.pipeline --stock-only --scanner-max-tickers 200
+python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs
+python -m src.pipeline --stock-only --skip-scanner
 ```
+
+Optional environment knobs:
+
+- `SCANNER_MAX_TICKERS` (default `60`)
+- `SCANNER_NON_WATCHLIST_INTRADAY_QUOTES` (default `0`)
+- `SCANNER_ALL_TICKERS` (default `false`)
+- `SCANNER_INCLUDE_ETFS` (default `false`)
 
 ## Run Dashboard
 
@@ -135,6 +180,8 @@ Notifications:
 
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 
-Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and is guarded at runtime to run only during Eastern extended hours (**07:00-20:00, weekdays**). It executes `python -m src.pipeline --stock-only`.
+Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only --skip-scanner` to keep watchlist alerts fresh intraday.
+
+Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs`.
 
 `workflow_dispatch` remains available for both workflows.

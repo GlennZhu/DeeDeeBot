@@ -34,6 +34,9 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
     monkeypatch.setattr(pipeline, "DERIVED_DATA_DIR", derived_dir)
     monkeypatch.setattr(pipeline, "STOCK_WATCHLIST_PATH", derived_dir / "stock_watchlist.csv")
     monkeypatch.setattr(pipeline, "STOCK_SIGNALS_PATH", derived_dir / "stock_signals_latest.csv")
+    monkeypatch.setattr(pipeline, "STOCK_UNIVERSE_PATH", derived_dir / "stock_universe.csv")
+    monkeypatch.setattr(pipeline, "SCANNER_SIGNALS_PATH", derived_dir / "scanner_signals_latest.csv")
+    monkeypatch.setattr(pipeline, "SCANNER_THESIS_PATH", derived_dir / "scanner_thesis_tags.csv")
     monkeypatch.setattr(pipeline, "SIGNAL_EVENTS_PATH", derived_dir / "signal_events_7d.csv")
 
     def fake_fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
@@ -56,10 +59,15 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
             "NVDA": 160.0,
             "MSFT": 180.0,
             "QQQ": 200.0,
+            "META": 170.0,
+            "AMZN": 130.0,
         }[ticker]
         return _series([base + i * 0.4 for i in range(260)], "2025-01-02", "D")
 
+    intraday_calls: list[str] = []
+
     def fake_fetch_stock_intraday_quote(ticker: str) -> dict[str, object] | None:
+        intraday_calls.append(ticker)
         if ticker == "NVDA":
             return {
                 "price": 250.0,
@@ -76,11 +84,35 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
             }
         return None
 
+    def fake_fetch_stock_universe_snapshot() -> pd.DataFrame:
+        return pd.DataFrame(
+            [
+                {
+                    "ticker": "META",
+                    "security_name": "Meta Platforms, Inc.",
+                    "exchange": "NASDAQ Global Select",
+                    "is_etf": False,
+                    "source": "TEST_UNIVERSE",
+                },
+                {
+                    "ticker": "AMZN",
+                    "security_name": "Amazon.com, Inc.",
+                    "exchange": "NASDAQ Global Select",
+                    "is_etf": False,
+                    "source": "TEST_UNIVERSE",
+                },
+            ]
+        )
+
     monkeypatch.setattr(pipeline, "fetch_fred_series", fake_fetch_fred_series)
     monkeypatch.setattr(pipeline, "fetch_stock_daily_history", fake_fetch_stock_daily_history)
     monkeypatch.setattr(pipeline, "fetch_stock_intraday_quote", fake_fetch_stock_intraday_quote)
+    monkeypatch.setattr(pipeline, "fetch_stock_universe_snapshot", fake_fetch_stock_universe_snapshot)
 
-    pipeline.run_pipeline(start_date="2024-01-01", lookback_years=15)
+    pipeline.run_pipeline(start_date="2024-01-01", lookback_years=15, scanner_max_tickers=7)
+
+    assert "META" not in intraday_calls
+    assert "AMZN" not in intraday_calls
 
     raw_files = {
         "m2.csv",
@@ -169,6 +201,43 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
     }.issubset(set(stock_signals.columns))
     assert set(stock_signals["ticker"].tolist()) == {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ"}
 
+    stock_universe = pd.read_csv(derived_dir / "stock_universe.csv")
+    assert {
+        "ticker",
+        "security_name",
+        "exchange",
+        "is_etf",
+        "universe_source",
+        "is_watchlist",
+        "last_refreshed_utc",
+    }.issubset(set(stock_universe.columns))
+    assert {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ", "META", "AMZN"}.issubset(set(stock_universe["ticker"].tolist()))
+
+    scanner_signals = pd.read_csv(derived_dir / "scanner_signals_latest.csv")
+    assert {
+        "ticker",
+        "security_name",
+        "exchange",
+        "universe_source",
+        "is_watchlist",
+        "thesis_score",
+        "trend_established",
+        "crossback_three_green_confirmed",
+        "pullback_order_zone_ma100_or_ma200",
+        "leader_score",
+        "scanner_score",
+        "leader_candidate",
+        "scanner_candidate",
+        "scanner_reasons",
+        "status",
+        "last_updated_utc",
+    }.issubset(set(scanner_signals.columns))
+    assert {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ", "META", "AMZN"}.issubset(set(scanner_signals["ticker"].tolist()))
+
+    thesis = pd.read_csv(derived_dir / "scanner_thesis_tags.csv")
+    assert thesis.columns.tolist() == pipeline.SCANNER_THESIS_COLUMNS
+    assert {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ"}.issubset(set(thesis["ticker"].tolist()))
+
     signal_events = pd.read_csv(derived_dir / "signal_events_7d.csv")
     assert signal_events.columns.tolist() == pipeline.SIGNAL_EVENT_COLUMNS
     if not signal_events.empty:
@@ -227,6 +296,90 @@ def test_detect_new_threshold_events_flags_only_new_trigger() -> None:
     by_metric = {event["metric_key"]: event for event in events}
     assert by_metric["ten_year_yield"]["new_threshold_ids"] == ["ten_year_yield_gte_5_0"]
     assert by_metric["hiring_rate"]["new_threshold_ids"] == ["hiring_rate_lte_3_4"]
+
+
+def test_select_scanner_universe_all_tickers_includes_etfs_when_enabled() -> None:
+    universe = pd.DataFrame(
+        [
+            {
+                "ticker": "QQQ",
+                "security_name": "Invesco QQQ",
+                "exchange": "NASDAQ",
+                "is_etf": True,
+                "universe_source": "test",
+                "is_watchlist": True,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "SPY",
+                "security_name": "SPDR S&P 500 ETF Trust",
+                "exchange": "NYSE Arca",
+                "is_etf": True,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+        ]
+    )
+
+    selected = pipeline._select_scanner_universe(
+        universe,
+        max_tickers=None,
+        include_etfs=True,
+    )
+
+    assert set(selected["ticker"].tolist()) == {"QQQ", "AAPL", "SPY"}
+
+
+def test_select_scanner_universe_capped_excludes_non_watchlist_etfs_by_default() -> None:
+    universe = pd.DataFrame(
+        [
+            {
+                "ticker": "QQQ",
+                "security_name": "Invesco QQQ",
+                "exchange": "NASDAQ",
+                "is_etf": True,
+                "universe_source": "test",
+                "is_watchlist": True,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "SPY",
+                "security_name": "SPDR S&P 500 ETF Trust",
+                "exchange": "NYSE Arca",
+                "is_etf": True,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+        ]
+    )
+
+    selected = pipeline._select_scanner_universe(
+        universe,
+        max_tickers=3,
+        include_etfs=False,
+    )
+
+    assert set(selected["ticker"].tolist()) == {"QQQ", "AAPL"}
 
 
 def test_detect_new_threshold_events_includes_negative_clears_only() -> None:

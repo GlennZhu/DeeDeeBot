@@ -1,4 +1,4 @@
-"""Streamlit dashboard for macro and stock watchlist monitoring from cached CSV files."""
+"""Streamlit dashboard for macro, stock watchlist, and market scanner monitoring."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ RAW_DATA_DIR = Path("data/raw")
 DERIVED_DATA_DIR = Path("data/derived")
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
+STOCK_UNIVERSE_PATH = DERIVED_DATA_DIR / "stock_universe.csv"
+SCANNER_SIGNALS_PATH = DERIVED_DATA_DIR / "scanner_signals_latest.csv"
 SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
     {"ticker": "GOOG"},
@@ -565,6 +567,117 @@ def _render_stock_tab() -> None:
         if status and status != "ok":
             card.caption(f"Status: {status} ({row.get('status_message', '')})")
 
+
+def _render_scanner_tab() -> None:
+    scanner_signals = _load_csv(
+        SCANNER_SIGNALS_PATH,
+        ["as_of_date", "last_updated_utc", "intraday_quote_timestamp_utc"],
+    )
+    st.subheader("Market Scanner (Beyond Watchlist)")
+
+    if scanner_signals.empty:
+        st.info("No scanner data found yet. Run `python -m src.pipeline --stock-only` first.")
+        return
+
+    scanner_signals["ticker"] = scanner_signals["ticker"].astype(str).str.upper()
+    if "last_updated_utc" in scanner_signals.columns and not scanner_signals["last_updated_utc"].dropna().empty:
+        st.info(
+            "Last successful scanner update (ET): "
+            f"{_format_et_timestamp(scanner_signals['last_updated_utc'].dropna().max())}"
+        )
+
+    if "is_watchlist" not in scanner_signals.columns:
+        scanner_signals["is_watchlist"] = False
+    if "scanner_candidate" not in scanner_signals.columns:
+        scanner_signals["scanner_candidate"] = False
+    if "leader_candidate" not in scanner_signals.columns:
+        scanner_signals["leader_candidate"] = False
+
+    scanner_signals["is_watchlist"] = scanner_signals["is_watchlist"].map(_as_bool)
+    scanner_signals["scanner_candidate"] = scanner_signals["scanner_candidate"].map(_as_bool)
+    scanner_signals["leader_candidate"] = scanner_signals["leader_candidate"].map(_as_bool)
+
+    metric_cols = st.columns(4)
+    metric_cols[0].metric("Scanned", len(scanner_signals))
+    metric_cols[1].metric("Candidates", int(scanner_signals["scanner_candidate"].sum()))
+    metric_cols[2].metric("Leaders", int(scanner_signals["leader_candidate"].sum()))
+    metric_cols[3].metric("Watchlist", int(scanner_signals["is_watchlist"].sum()))
+
+    filter_cols = st.columns(4)
+    only_candidates = filter_cols[0].checkbox("Only candidates", value=True)
+    include_watchlist_only = filter_cols[1].checkbox("Watchlist only", value=False)
+    min_score = filter_cols[2].number_input("Min scanner score", min_value=0.0, max_value=10.0, value=0.0, step=0.5)
+    search_term = filter_cols[3].text_input("Search", placeholder="Ticker, exchange, reason, thesis")
+
+    filtered = scanner_signals.copy()
+    if only_candidates:
+        filtered = filtered[filtered["scanner_candidate"]]
+    if include_watchlist_only:
+        filtered = filtered[filtered["is_watchlist"]]
+    if "scanner_score" in filtered.columns:
+        filtered["scanner_score"] = pd.to_numeric(filtered["scanner_score"], errors="coerce")
+        filtered = filtered[filtered["scanner_score"].fillna(0.0) >= float(min_score)]
+
+    if search_term.strip():
+        query = search_term.strip().lower()
+        search_columns = [
+            "ticker",
+            "security_name",
+            "exchange",
+            "scanner_reasons",
+            "thesis_tags",
+            "relative_strength_reasons",
+        ]
+        mask = pd.Series(False, index=filtered.index)
+        for col in search_columns:
+            if col in filtered.columns:
+                mask = mask | filtered[col].astype(str).str.lower().str.contains(query, na=False)
+        filtered = filtered.loc[mask]
+
+    if filtered.empty:
+        st.info("No scanner rows match the selected filters.")
+        return
+
+    if "scanner_score" not in filtered.columns:
+        filtered["scanner_score"] = pd.NA
+    if "leader_score" not in filtered.columns:
+        filtered["leader_score"] = pd.NA
+    filtered = filtered.sort_values(by=["scanner_candidate", "scanner_score", "ticker"], ascending=[False, False, True])
+
+    display_columns = [
+        "ticker",
+        "price",
+        "scanner_score",
+        "leader_score",
+        "scanner_candidate",
+        "leader_candidate",
+        "trend_established",
+        "crossback_three_green_confirmed",
+        "pullback_order_zone_ma100_or_ma200",
+        "entry_bullish_alignment",
+        "alpha_1m",
+        "rs_ratio",
+        "relative_strength_weak",
+        "is_watchlist",
+        "exchange",
+        "security_name",
+        "thesis_tags",
+        "scanner_reasons",
+        "status",
+    ]
+    available_columns = [col for col in display_columns if col in filtered.columns]
+    st.dataframe(filtered[available_columns], use_container_width=True, hide_index=True)
+
+    universe_frame = _load_csv(STOCK_UNIVERSE_PATH, ["last_refreshed_utc"])
+    if not universe_frame.empty and "last_refreshed_utc" in universe_frame.columns:
+        latest_universe_refresh = universe_frame["last_refreshed_utc"].dropna()
+        if not latest_universe_refresh.empty:
+            st.caption(
+                "Universe source refresh (ET): "
+                f"{_format_et_timestamp(latest_universe_refresh.max())}"
+            )
+
+
 def _render_signal_history_tab() -> None:
     signal_events = _load_csv(SIGNAL_EVENTS_PATH, ["event_timestamp_utc"])
     st.subheader("Signal Events (Past 7 Days)")
@@ -696,11 +809,15 @@ def main() -> None:
         st.cache_data.clear()
         st.rerun()
 
-    macro_tab, stock_tab, history_tab = st.tabs(["Macro Monitor", "Stock Watchlist", "Signal History (7D)"])
+    macro_tab, stock_tab, scanner_tab, history_tab = st.tabs(
+        ["Macro Monitor", "Stock Watchlist", "Market Scanner", "Signal History (7D)"]
+    )
     with macro_tab:
         _render_macro_tab(selected_window)
     with stock_tab:
         _render_stock_tab()
+    with scanner_tab:
+        _render_scanner_tab()
     with history_tab:
         _render_signal_history_tab()
 

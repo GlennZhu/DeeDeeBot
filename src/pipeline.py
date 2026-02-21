@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,8 +18,10 @@ from src.data_fetch import (
     fetch_fred_series,
     fetch_stock_daily_history,
     fetch_stock_intraday_quote,
+    fetch_stock_universe_snapshot,
 )
 from src.signals import compute_signals
+from src.stock_scanner import SCANNER_SIGNAL_COLUMNS, compute_scanner_signal_row
 from src.stock_signals import (
     BENCHMARK_RELATED_TRIGGER_COLUMNS,
     STOCK_SIGNAL_COLUMNS,
@@ -32,7 +35,28 @@ RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 DERIVED_DATA_DIR = PROJECT_ROOT / "data" / "derived"
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
+STOCK_UNIVERSE_PATH = DERIVED_DATA_DIR / "stock_universe.csv"
+SCANNER_SIGNALS_PATH = DERIVED_DATA_DIR / "scanner_signals_latest.csv"
+SCANNER_THESIS_PATH = DERIVED_DATA_DIR / "scanner_thesis_tags.csv"
 SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
+SCANNER_DEFAULT_MAX_TICKERS = 60
+SCANNER_DEFAULT_MIN_PRICE = 5.0
+SCANNER_DEFAULT_NON_WATCHLIST_INTRADAY_QUOTES = 0
+SCANNER_DEFAULT_INCLUDE_ETFS = False
+SCANNER_UNIVERSE_REFRESH_HOURS = 24
+SCANNER_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.\-]{0,5}$")
+
+STOCK_UNIVERSE_COLUMNS = [
+    "ticker",
+    "security_name",
+    "exchange",
+    "is_etf",
+    "universe_source",
+    "is_watchlist",
+    "last_refreshed_utc",
+]
+SCANNER_THESIS_COLUMNS = ["ticker", "pain_point", "solution", "conviction"]
+
 SIGNAL_EVENT_RETENTION_DAYS = 7
 SIGNAL_EVENT_COLUMNS = [
     "event_timestamp_utc",
@@ -427,6 +451,492 @@ def _load_or_initialize_watchlist(path: Path) -> pd.DataFrame:
         _write_watchlist(path, normalized_rows)
 
     return normalized_frame
+
+
+def _env_int(name: str, default_value: int, *, minimum: int = 1) -> int:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default_value
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        print(f"Warning: invalid integer for {name}={raw_value!r}; using default {default_value}.")
+        return default_value
+    if parsed < minimum:
+        return default_value
+    return parsed
+
+
+def _env_bool(name: str, default_value: bool) -> bool:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default_value
+    return raw_value.lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _coerce_bool_flag(raw_value: Any) -> bool:
+    if isinstance(raw_value, bool):
+        return raw_value
+    if pd.isna(raw_value):
+        return False
+    if isinstance(raw_value, (int, float)):
+        return bool(raw_value)
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _empty_stock_universe_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=STOCK_UNIVERSE_COLUMNS)
+
+
+def _empty_scanner_thesis_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=SCANNER_THESIS_COLUMNS)
+
+
+def _normalize_stock_universe_rows(
+    rows: list[dict[str, Any]],
+    *,
+    watchlist_tickers: set[str],
+    default_timestamp: str,
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        ticker = _normalize_ticker(row.get("ticker", ""))
+        if not ticker or ticker in seen:
+            continue
+        if not SCANNER_TICKER_PATTERN.fullmatch(ticker):
+            continue
+        seen.add(ticker)
+
+        last_refreshed_utc = str(row.get("last_refreshed_utc", "")).strip() or default_timestamp
+        normalized.append(
+            {
+                "ticker": ticker,
+                "security_name": str(row.get("security_name", "")).strip(),
+                "exchange": str(row.get("exchange", "")).strip(),
+                "is_etf": bool(_coerce_bool_flag(row.get("is_etf", False))),
+                "universe_source": str(row.get("universe_source", row.get("source", ""))).strip(),
+                "is_watchlist": ticker in watchlist_tickers,
+                "last_refreshed_utc": last_refreshed_utc,
+            }
+        )
+
+    for ticker in sorted(watchlist_tickers):
+        if ticker in seen:
+            continue
+        seen.add(ticker)
+        normalized.append(
+            {
+                "ticker": ticker,
+                "security_name": "",
+                "exchange": "",
+                "is_etf": ticker == DEFAULT_STOCK_BENCHMARK,
+                "universe_source": "watchlist_seed",
+                "is_watchlist": True,
+                "last_refreshed_utc": default_timestamp,
+            }
+        )
+    return normalized
+
+
+def _load_stock_universe_cache(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return _empty_stock_universe_frame()
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        print(f"Warning: failed to read scanner universe cache at {path}: {exc}")
+        return _empty_stock_universe_frame()
+
+    out = frame.copy()
+    for col in STOCK_UNIVERSE_COLUMNS:
+        if col not in out.columns:
+            out[col] = pd.NA
+    return out[STOCK_UNIVERSE_COLUMNS]
+
+
+def _is_stock_universe_refresh_due(frame: pd.DataFrame, now_iso: str) -> bool:
+    if frame.empty:
+        return True
+    if "last_refreshed_utc" not in frame.columns:
+        return True
+    timestamps = pd.to_datetime(frame["last_refreshed_utc"], errors="coerce", utc=True).dropna()
+    if timestamps.empty:
+        return True
+    latest_timestamp = timestamps.max()
+    now_ts = pd.Timestamp(now_iso)
+    if now_ts.tzinfo is None:
+        now_ts = now_ts.tz_localize("UTC")
+    else:
+        now_ts = now_ts.tz_convert("UTC")
+    elapsed_hours = (now_ts - latest_timestamp).total_seconds() / 3600.0
+    return elapsed_hours >= float(SCANNER_UNIVERSE_REFRESH_HOURS)
+
+
+def _load_or_refresh_stock_universe(path: Path, watchlist: pd.DataFrame, now_iso: str) -> pd.DataFrame:
+    watchlist_tickers = set(watchlist["ticker"].map(_normalize_ticker).tolist())
+    existing = _load_stock_universe_cache(path)
+    refresh_due = _is_stock_universe_refresh_due(existing, now_iso=now_iso)
+
+    if refresh_due:
+        try:
+            fetched = fetch_stock_universe_snapshot()
+            fetched_rows = fetched.to_dict(orient="records")
+            normalized_rows = _normalize_stock_universe_rows(
+                fetched_rows,
+                watchlist_tickers=watchlist_tickers,
+                default_timestamp=now_iso,
+            )
+            refreshed = pd.DataFrame(normalized_rows, columns=STOCK_UNIVERSE_COLUMNS).sort_values("ticker").reset_index(drop=True)
+            _write_csv(path, refreshed)
+            return refreshed
+        except Exception as exc:
+            print(f"Warning: failed to refresh stock universe from source: {exc}")
+
+    if not existing.empty:
+        normalized_rows = _normalize_stock_universe_rows(
+            existing.to_dict(orient="records"),
+            watchlist_tickers=watchlist_tickers,
+            default_timestamp=now_iso,
+        )
+        cached = pd.DataFrame(normalized_rows, columns=STOCK_UNIVERSE_COLUMNS).sort_values("ticker").reset_index(drop=True)
+        if not cached.equals(existing.reset_index(drop=True)):
+            _write_csv(path, cached)
+        return cached
+
+    fallback_rows = _normalize_stock_universe_rows(
+        [],
+        watchlist_tickers=watchlist_tickers,
+        default_timestamp=now_iso,
+    )
+    fallback = pd.DataFrame(fallback_rows, columns=STOCK_UNIVERSE_COLUMNS).sort_values("ticker").reset_index(drop=True)
+    _write_csv(path, fallback)
+    return fallback
+
+
+def _load_or_initialize_scanner_thesis(path: Path, watchlist: pd.DataFrame) -> pd.DataFrame:
+    if not path.exists():
+        seed_rows = [
+            {"ticker": _normalize_ticker(ticker), "pain_point": "", "solution": "", "conviction": 0.0}
+            for ticker in watchlist["ticker"].tolist()
+        ]
+        out = pd.DataFrame(seed_rows, columns=SCANNER_THESIS_COLUMNS).drop_duplicates(subset=["ticker"]).sort_values("ticker")
+        _write_csv(path, out)
+        return out.reset_index(drop=True)
+
+    try:
+        frame = pd.read_csv(path)
+    except Exception as exc:
+        print(f"Warning: failed to read scanner thesis tags at {path}: {exc}; recreating defaults.")
+        path.unlink(missing_ok=True)
+        return _load_or_initialize_scanner_thesis(path, watchlist)
+
+    out = frame.copy()
+    for col in SCANNER_THESIS_COLUMNS:
+        if col not in out.columns:
+            out[col] = ""
+    out = out[SCANNER_THESIS_COLUMNS]
+    out["ticker"] = out["ticker"].map(_normalize_ticker)
+    out = out[out["ticker"] != ""]
+    out["pain_point"] = out["pain_point"].astype(str).str.strip()
+    out["solution"] = out["solution"].astype(str).str.strip()
+    out["conviction"] = pd.to_numeric(out["conviction"], errors="coerce").fillna(0.0).clip(lower=0.0, upper=2.0)
+
+    watchlist_tickers = set(watchlist["ticker"].map(_normalize_ticker).tolist())
+    missing_watchlist = sorted(watchlist_tickers - set(out["ticker"].tolist()))
+    if missing_watchlist:
+        out = pd.concat(
+            [
+                out,
+                pd.DataFrame(
+                    [
+                        {"ticker": ticker, "pain_point": "", "solution": "", "conviction": 0.0}
+                        for ticker in missing_watchlist
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+
+    out = out.drop_duplicates(subset=["ticker"], keep="first").sort_values("ticker").reset_index(drop=True)
+    _write_csv(path, out)
+    return out
+
+
+def _build_thesis_lookup(thesis_frame: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    if thesis_frame.empty:
+        return lookup
+
+    for _, row in thesis_frame.iterrows():
+        ticker = _normalize_ticker(row.get("ticker", ""))
+        if not ticker:
+            continue
+        pain_point = str(row.get("pain_point", "")).strip()
+        solution = str(row.get("solution", "")).strip()
+        conviction = pd.to_numeric(row.get("conviction", 0.0), errors="coerce")
+        conviction_score = 0.0 if pd.isna(conviction) else float(conviction)
+        conviction_score = min(2.0, max(0.0, conviction_score))
+        tags = " | ".join(part for part in [pain_point, solution] if part)
+
+        lookup[ticker] = {
+            "thesis_tags": tags,
+            "thesis_score": conviction_score,
+        }
+    return lookup
+
+
+def _select_scanner_universe(
+    universe: pd.DataFrame,
+    *,
+    max_tickers: int | None,
+    include_etfs: bool,
+) -> pd.DataFrame:
+    if universe.empty:
+        return _empty_stock_universe_frame()
+
+    ranked = universe.copy()
+    ranked["ticker"] = ranked["ticker"].map(_normalize_ticker)
+    ranked = ranked[ranked["ticker"] != ""]
+    ranked = ranked[ranked["ticker"].map(lambda ticker: bool(SCANNER_TICKER_PATTERN.fullmatch(ticker)))]
+
+    if ranked.empty:
+        return _empty_stock_universe_frame()
+
+    ranked["is_watchlist"] = ranked["is_watchlist"].map(_coerce_bool_flag)
+    ranked["is_etf"] = ranked["is_etf"].map(_coerce_bool_flag)
+    exchange_priority = {
+        "NASDAQ": 0,
+        "NASDAQ GLOBAL SELECT": 0,
+        "NASDAQ GLOBAL MARKET": 0,
+        "NASDAQ CAPITAL MARKET": 0,
+        "NYSE": 1,
+        "NYSE ARCA": 2,
+        "NYSE AMERICAN": 2,
+    }
+    ranked["_exchange_rank"] = ranked["exchange"].astype(str).str.upper().map(exchange_priority).fillna(3).astype(int)
+    ranked["_len_rank"] = ranked["ticker"].astype(str).str.len()
+    ranked = ranked.sort_values(
+        by=["is_watchlist", "is_etf", "_exchange_rank", "_len_rank", "ticker"],
+        ascending=[False, True, True, True, True],
+    )
+
+    watchlist_rows = ranked[ranked["is_watchlist"]].copy()
+    non_watch_rows = ranked[~ranked["is_watchlist"]].copy()
+
+    if not include_etfs:
+        non_watch_rows = non_watch_rows[~non_watch_rows["is_etf"]]
+
+    if max_tickers is None:
+        selected = pd.concat([watchlist_rows, non_watch_rows], ignore_index=True)
+    else:
+        cap = max(1, int(max_tickers))
+        if len(watchlist_rows) >= cap:
+            selected = watchlist_rows
+        else:
+            non_watch_quota = cap - len(watchlist_rows)
+            selected = pd.concat([watchlist_rows, non_watch_rows.head(non_watch_quota)], ignore_index=True)
+
+    selected = (
+        selected.drop(columns=["_exchange_rank", "_len_rank"], errors="ignore")
+        .drop_duplicates(subset=["ticker"], keep="first")
+        .sort_values("ticker")
+        .reset_index(drop=True)
+    )
+    for col in STOCK_UNIVERSE_COLUMNS:
+        if col not in selected.columns:
+            selected[col] = pd.NA
+    return selected[STOCK_UNIVERSE_COLUMNS]
+
+
+def _empty_scanner_signal_row(
+    *,
+    ticker: str,
+    benchmark_ticker: str,
+    now_iso: str,
+    metadata: dict[str, Any],
+    status: str,
+    status_message: str,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {column: pd.NA for column in SCANNER_SIGNAL_COLUMNS}
+    row.update(
+        {
+            "ticker": ticker,
+            "security_name": str(metadata.get("security_name", "")).strip(),
+            "exchange": str(metadata.get("exchange", "")).strip(),
+            "universe_source": str(metadata.get("universe_source", "")).strip(),
+            "is_watchlist": bool(metadata.get("is_watchlist", False)),
+            "is_etf": bool(metadata.get("is_etf", False)),
+            "thesis_tags": str(metadata.get("thesis_tags", "")).strip(),
+            "thesis_score": float(metadata.get("thesis_score", 0.0)),
+            "benchmark_ticker": benchmark_ticker,
+            "as_of_date": "",
+            "relative_strength_reasons": "not_available",
+            "leader_score": 0.0,
+            "scanner_score": 0.0,
+            "leader_candidate": False,
+            "scanner_candidate": False,
+            "trend_established": False,
+            "crossback_ma14_over_ma50": False,
+            "three_green_candles": False,
+            "bullish_rsi_divergence": False,
+            "crossback_three_green_confirmed": False,
+            "pullback_order_zone_ma100_or_ma200": False,
+            "scanner_reasons": "NO_ACTIVE_SETUP",
+            "source": f"STOOQ:{ticker}",
+            "status": status,
+            "status_message": status_message,
+            "last_updated_utc": now_iso,
+        }
+    )
+    return row
+
+
+def _compute_scanner_signals(
+    *,
+    selected_universe: pd.DataFrame,
+    watchlist: pd.DataFrame,
+    thesis_frame: pd.DataFrame,
+    start_date: str,
+    now_iso: str,
+    non_watchlist_intraday_quotes: int = SCANNER_DEFAULT_NON_WATCHLIST_INTRADAY_QUOTES,
+) -> pd.DataFrame:
+    expected_cols = [*SCANNER_SIGNAL_COLUMNS, "last_updated_utc"]
+    if selected_universe.empty:
+        return pd.DataFrame(columns=expected_cols)
+
+    benchmark_by_ticker = {
+        _normalize_ticker(row.get("ticker", "")): _normalize_benchmark(row.get("benchmark", DEFAULT_STOCK_BENCHMARK))
+        for _, row in watchlist.iterrows()
+    }
+    thesis_lookup = _build_thesis_lookup(thesis_frame)
+    unique_benchmarks = sorted(set(benchmark_by_ticker.values()) | {DEFAULT_STOCK_BENCHMARK})
+
+    benchmark_history: dict[str, pd.Series | None] = {}
+    benchmark_intraday: dict[str, dict[str, Any] | None] = {}
+    for benchmark_ticker in unique_benchmarks:
+        try:
+            benchmark_history[benchmark_ticker] = fetch_stock_daily_history(benchmark_ticker, start_date)
+        except Exception as exc:
+            print(f"Warning: failed to fetch scanner benchmark history for {benchmark_ticker}: {exc}")
+            benchmark_history[benchmark_ticker] = None
+        try:
+            benchmark_intraday[benchmark_ticker] = fetch_stock_intraday_quote(benchmark_ticker)
+        except Exception as exc:
+            print(f"Warning: failed to fetch scanner benchmark intraday quote for {benchmark_ticker}: {exc}")
+            benchmark_intraday[benchmark_ticker] = None
+
+    rows: list[dict[str, Any]] = []
+    remaining_non_watchlist_intraday_quotes = max(0, int(non_watchlist_intraday_quotes))
+    for _, universe_row in selected_universe.iterrows():
+        ticker = _normalize_ticker(universe_row.get("ticker", ""))
+        if not ticker:
+            continue
+        benchmark_ticker = benchmark_by_ticker.get(ticker, DEFAULT_STOCK_BENCHMARK)
+
+        metadata = {
+            "security_name": str(universe_row.get("security_name", "")).strip(),
+            "exchange": str(universe_row.get("exchange", "")).strip(),
+            "universe_source": str(universe_row.get("universe_source", "")).strip(),
+            "is_watchlist": bool(_coerce_bool_flag(universe_row.get("is_watchlist", False))),
+            "is_etf": bool(_coerce_bool_flag(universe_row.get("is_etf", False))),
+            "thesis_tags": str(thesis_lookup.get(ticker, {}).get("thesis_tags", "")).strip(),
+            "thesis_score": float(thesis_lookup.get(ticker, {}).get("thesis_score", 0.0)),
+        }
+
+        try:
+            daily_close = fetch_stock_daily_history(ticker, start_date)
+        except Exception as exc:
+            rows.append(
+                _empty_scanner_signal_row(
+                    ticker=ticker,
+                    benchmark_ticker=benchmark_ticker,
+                    now_iso=now_iso,
+                    metadata=metadata,
+                    status="fetch_error",
+                    status_message=f"Failed to fetch daily history: {exc}",
+                )
+            )
+            continue
+
+        latest_quote: dict[str, Any] | None = None
+        latest_price: float | None = None
+        use_intraday_quote = bool(metadata["is_watchlist"])
+        if not use_intraday_quote and remaining_non_watchlist_intraday_quotes > 0:
+            use_intraday_quote = True
+            remaining_non_watchlist_intraday_quotes -= 1
+
+        if use_intraday_quote:
+            try:
+                latest_quote = fetch_stock_intraday_quote(ticker)
+                if latest_quote is not None:
+                    latest_price = float(latest_quote["price"])
+                    quote_source = str(latest_quote.get("source", "")).strip()
+                    if quote_source:
+                        daily_close.attrs["intraday_source"] = quote_source
+            except Exception as exc:
+                print(f"Warning: failed to fetch scanner intraday quote for {ticker}: {exc}")
+
+        try:
+            benchmark_close = benchmark_history.get(benchmark_ticker)
+            benchmark_quote = benchmark_intraday.get(benchmark_ticker)
+            benchmark_latest_price = float(benchmark_quote["price"]) if benchmark_quote else None
+
+            row = compute_scanner_signal_row(
+                ticker=ticker,
+                daily_close=daily_close,
+                latest_price=latest_price,
+                benchmark_ticker=benchmark_ticker,
+                benchmark_close=benchmark_close,
+                benchmark_latest_price=benchmark_latest_price,
+                is_watchlist=bool(metadata["is_watchlist"]),
+                security_name=str(metadata["security_name"]),
+                exchange=str(metadata["exchange"]),
+                universe_source=str(metadata["universe_source"]),
+                is_etf=bool(metadata["is_etf"]),
+                thesis_tags=str(metadata["thesis_tags"]),
+                thesis_score=float(metadata["thesis_score"]),
+            )
+            if latest_quote is not None:
+                row["intraday_quote_timestamp_utc"] = latest_quote.get("quote_timestamp_utc")
+                row["intraday_quote_age_seconds"] = latest_quote.get("quote_age_seconds")
+                row["intraday_quote_source"] = latest_quote.get("source")
+                quote_day_change = latest_quote.get("day_change")
+                if quote_day_change is not None and pd.notna(quote_day_change):
+                    row["day_change"] = float(quote_day_change)
+                quote_day_change_pct = latest_quote.get("day_change_pct")
+                if quote_day_change_pct is not None and pd.notna(quote_day_change_pct):
+                    row["day_change_pct"] = float(quote_day_change_pct)
+
+            price_value = row.get("price")
+            if pd.notna(price_value) and float(price_value) < SCANNER_DEFAULT_MIN_PRICE:
+                row["scanner_candidate"] = False
+                row["scanner_reasons"] = "NO_ACTIVE_SETUP"
+
+            row["last_updated_utc"] = now_iso
+            rows.append(row)
+        except Exception as exc:
+            rows.append(
+                _empty_scanner_signal_row(
+                    ticker=ticker,
+                    benchmark_ticker=benchmark_ticker,
+                    now_iso=now_iso,
+                    metadata=metadata,
+                    status="compute_error",
+                    status_message=f"Failed to compute scanner signals: {exc}",
+                )
+            )
+
+    frame = pd.DataFrame(rows)
+    for col in expected_cols:
+        if col not in frame.columns:
+            frame[col] = pd.NA
+
+    return (
+        frame[expected_cols]
+        .sort_values(by=["scanner_candidate", "scanner_score", "ticker"], ascending=[False, False, True])
+        .reset_index(drop=True)
+    )
 
 
 def _empty_stock_signal_row(
@@ -893,7 +1403,15 @@ def _run_macro_pipeline(start_date: str, now_iso: str) -> None:
     _notify_threshold_events(macro_events, now_iso)
 
 
-def _run_stock_pipeline(start_date: str, now_iso: str) -> None:
+def _run_stock_pipeline(
+    start_date: str,
+    now_iso: str,
+    *,
+    run_scanner: bool = True,
+    scanner_max_tickers: int | None = None,
+    scanner_all_tickers: bool = False,
+    scanner_include_etfs: bool = SCANNER_DEFAULT_INCLUDE_ETFS,
+) -> None:
     previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
     watchlist = _load_or_initialize_watchlist(STOCK_WATCHLIST_PATH)
     stock_signals = _compute_watchlist_signals(watchlist=watchlist, start_date=start_date, now_iso=now_iso)
@@ -907,12 +1425,52 @@ def _run_stock_pipeline(start_date: str, now_iso: str) -> None:
     )
     _notify_stock_trigger_events(stock_events, now_iso)
 
+    if not run_scanner:
+        return
+
+    configured_all_tickers = bool(scanner_all_tickers) or _env_bool("SCANNER_ALL_TICKERS", False)
+    configured_max_tickers: int | None = None
+    if not configured_all_tickers:
+        configured_max_tickers = scanner_max_tickers if scanner_max_tickers is not None else _env_int(
+            "SCANNER_MAX_TICKERS", SCANNER_DEFAULT_MAX_TICKERS, minimum=1
+        )
+    configured_include_etfs = (
+        bool(scanner_include_etfs)
+        or _env_bool("SCANNER_INCLUDE_ETFS", SCANNER_DEFAULT_INCLUDE_ETFS)
+    )
+    non_watchlist_intraday_quotes = _env_int(
+        "SCANNER_NON_WATCHLIST_INTRADAY_QUOTES",
+        SCANNER_DEFAULT_NON_WATCHLIST_INTRADAY_QUOTES,
+        minimum=0,
+    )
+    universe = _load_or_refresh_stock_universe(STOCK_UNIVERSE_PATH, watchlist=watchlist, now_iso=now_iso)
+    selected_universe = _select_scanner_universe(
+        universe,
+        max_tickers=configured_max_tickers,
+        include_etfs=configured_include_etfs,
+    )
+    thesis_frame = _load_or_initialize_scanner_thesis(SCANNER_THESIS_PATH, watchlist=watchlist)
+    scanner_signals = _compute_scanner_signals(
+        selected_universe=selected_universe,
+        watchlist=watchlist,
+        thesis_frame=thesis_frame,
+        start_date=start_date,
+        now_iso=now_iso,
+        non_watchlist_intraday_quotes=non_watchlist_intraday_quotes,
+    )
+    _write_csv(STOCK_UNIVERSE_PATH, universe)
+    _write_csv(SCANNER_SIGNALS_PATH, scanner_signals)
+
 
 def run_pipeline(
     start_date: str | None = None,
     lookback_years: int = DEFAULT_LOOKBACK_YEARS,
     run_macro: bool = True,
     run_stock: bool = True,
+    run_scanner: bool = True,
+    scanner_max_tickers: int | None = None,
+    scanner_all_tickers: bool = False,
+    scanner_include_etfs: bool = SCANNER_DEFAULT_INCLUDE_ETFS,
 ) -> None:
     """Run pipeline sections and persist CSV artifacts."""
     if not run_macro and not run_stock:
@@ -925,13 +1483,41 @@ def run_pipeline(
     if run_macro:
         _run_macro_pipeline(start_date=start_date, now_iso=now_iso)
     if run_stock:
-        _run_stock_pipeline(start_date=start_date, now_iso=now_iso)
+        _run_stock_pipeline(
+            start_date=start_date,
+            now_iso=now_iso,
+            run_scanner=run_scanner,
+            scanner_max_tickers=scanner_max_tickers,
+            scanner_all_tickers=scanner_all_tickers,
+            scanner_include_etfs=scanner_include_etfs,
+        )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run macro signal dashboard data pipeline.")
     parser.add_argument("--start-date", type=str, default=None, help="ISO date, e.g. 2011-01-01")
     parser.add_argument("--lookback-years", type=int, default=DEFAULT_LOOKBACK_YEARS, help="Years of history to pull")
+    parser.add_argument(
+        "--skip-scanner",
+        action="store_true",
+        help="Skip broad market scanner refresh when stock pipeline runs.",
+    )
+    parser.add_argument(
+        "--scanner-max-tickers",
+        type=int,
+        default=None,
+        help="Maximum tickers to include in the broad market scanner (watchlist always included).",
+    )
+    parser.add_argument(
+        "--scanner-all-tickers",
+        action="store_true",
+        help="Scan all discovered universe tickers (ignores max ticker cap).",
+    )
+    parser.add_argument(
+        "--scanner-include-etfs",
+        action="store_true",
+        help="Include ETFs in non-watchlist scanner universe selection.",
+    )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--macro-only", action="store_true", help="Run only macro data fetch/signal steps")
     mode_group.add_argument("--stock-only", action="store_true", help="Run only stock watchlist steps")
@@ -947,6 +1533,10 @@ def main() -> None:
         lookback_years=args.lookback_years,
         run_macro=run_macro,
         run_stock=run_stock,
+        run_scanner=not args.skip_scanner,
+        scanner_max_tickers=args.scanner_max_tickers,
+        scanner_all_tickers=args.scanner_all_tickers,
+        scanner_include_etfs=args.scanner_include_etfs,
     )
 
 

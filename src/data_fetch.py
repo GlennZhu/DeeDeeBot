@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import io
 from datetime import datetime, timezone
 from typing import Any
 from urllib import request
@@ -10,6 +11,18 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 from pandas_datareader.data import DataReader
+
+NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
+OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
+UNIVERSE_FETCH_USER_AGENT = "BingBingBot/1.0 (github-actions)"
+
+_OTHER_LISTED_EXCHANGE_MAP = {
+    "A": "NYSE American",
+    "N": "NYSE",
+    "P": "NYSE Arca",
+    "V": "IEX",
+    "Z": "BATS",
+}
 
 
 def _normalize_series(series: pd.Series, series_name: str) -> pd.Series:
@@ -97,6 +110,121 @@ def _parse_stooq_percent_to_decimal(raw_value: str) -> float | None:
         return float(text) / 100.0
     except ValueError:
         return None
+
+
+def _fetch_text_payload(url: str, timeout: int = 20) -> str:
+    req = request.Request(
+        url,
+        headers={
+            "Accept": "text/plain,application/json;q=0.9,*/*;q=0.8",
+            "User-Agent": UNIVERSE_FETCH_USER_AGENT,
+        },
+        method="GET",
+    )
+    with request.urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def _read_pipe_table(raw_text: str) -> list[dict[str, str]]:
+    lines = [line for line in raw_text.splitlines() if line.strip()]
+    filtered_lines = [line for line in lines if not line.startswith("File Creation Time")]
+    if not filtered_lines:
+        return []
+
+    reader = csv.DictReader(io.StringIO("\n".join(filtered_lines)), delimiter="|")
+    rows: list[dict[str, str]] = []
+    for row in reader:
+        clean_row = {str(key).strip(): str(value).strip() for key, value in row.items() if key is not None}
+        if clean_row:
+            rows.append(clean_row)
+    return rows
+
+
+def _normalize_universe_ticker(raw_value: str) -> str:
+    ticker = str(raw_value).strip().upper()
+    if not ticker:
+        return ""
+    return ticker
+
+
+def _coerce_bool_flag(raw_value: str) -> bool:
+    return str(raw_value).strip().upper() in {"Y", "YES", "TRUE", "1"}
+
+
+def _normalize_nasdaq_listed_rows(raw_rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    out: list[dict[str, object]] = []
+    for row in raw_rows:
+        ticker = _normalize_universe_ticker(row.get("Symbol", ""))
+        if not ticker:
+            continue
+        if _coerce_bool_flag(row.get("Test Issue", "N")):
+            continue
+        exchange_code = str(row.get("Market Category", "")).strip().upper()
+        exchange = "NASDAQ"
+        if exchange_code == "Q":
+            exchange = "NASDAQ Global Select"
+        elif exchange_code == "G":
+            exchange = "NASDAQ Global Market"
+        elif exchange_code == "S":
+            exchange = "NASDAQ Capital Market"
+
+        out.append(
+            {
+                "ticker": ticker,
+                "security_name": str(row.get("Security Name", "")).strip(),
+                "exchange": exchange,
+                "is_etf": _coerce_bool_flag(row.get("ETF", "N")),
+                "source": "NASDAQ_TRADER_NASDAQ_LISTED",
+            }
+        )
+    return out
+
+
+def _normalize_other_listed_rows(raw_rows: list[dict[str, str]]) -> list[dict[str, object]]:
+    out: list[dict[str, object]] = []
+    for row in raw_rows:
+        ticker = _normalize_universe_ticker(row.get("ACT Symbol", ""))
+        if not ticker:
+            continue
+        if _coerce_bool_flag(row.get("Test Issue", "N")):
+            continue
+
+        exchange_code = str(row.get("Exchange", "")).strip().upper()
+        exchange = _OTHER_LISTED_EXCHANGE_MAP.get(exchange_code, exchange_code or "OTHER")
+
+        out.append(
+            {
+                "ticker": ticker,
+                "security_name": str(row.get("Security Name", "")).strip(),
+                "exchange": exchange,
+                "is_etf": _coerce_bool_flag(row.get("ETF", "N")),
+                "source": "NASDAQ_TRADER_OTHER_LISTED",
+            }
+        )
+    return out
+
+
+def fetch_stock_universe_snapshot() -> pd.DataFrame:
+    """Fetch a broad U.S. ticker universe from Nasdaq Trader symbol directories."""
+    nasdaq_text = _fetch_text_payload(NASDAQ_LISTED_URL)
+    other_text = _fetch_text_payload(OTHER_LISTED_URL)
+
+    nasdaq_rows = _normalize_nasdaq_listed_rows(_read_pipe_table(nasdaq_text))
+    other_rows = _normalize_other_listed_rows(_read_pipe_table(other_text))
+    merged = [*nasdaq_rows, *other_rows]
+
+    if not merged:
+        raise RuntimeError("Ticker universe source returned no rows.")
+
+    frame = pd.DataFrame(merged)
+    frame["ticker"] = frame["ticker"].astype(str).str.strip().str.upper()
+    frame["security_name"] = frame["security_name"].astype(str).str.strip()
+    frame["exchange"] = frame["exchange"].astype(str).str.strip()
+    frame["is_etf"] = frame["is_etf"].astype(bool)
+    frame["source"] = frame["source"].astype(str).str.strip()
+
+    deduped = frame.drop_duplicates(subset=["ticker"], keep="first").sort_values("ticker").reset_index(drop=True)
+    return deduped[["ticker", "security_name", "exchange", "is_etf", "source"]]
 
 
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:

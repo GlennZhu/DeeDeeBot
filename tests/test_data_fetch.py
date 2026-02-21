@@ -74,3 +74,47 @@ def test_fetch_stock_intraday_latest_returns_none_on_bad_payload(monkeypatch) ->
     monkeypatch.setattr(data_fetch.request, "urlopen", lambda *args, **kwargs: _FakeResponse(""))
 
     assert data_fetch.fetch_stock_intraday_latest("NVDA") is None
+
+
+def test_fetch_stock_universe_snapshot_parses_nasdaq_trader_files(monkeypatch) -> None:
+    nasdaq_payload = "\n".join(
+        [
+            "Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares",
+            "AAPL|Apple Inc. Common Stock|Q|N|N|100|N|N",
+            "QQQ|Invesco QQQ Trust, Series 1|G|N|N|100|Y|N",
+            "ZTEST|Ignored Test Issue|Q|Y|N|100|N|N",
+            "File Creation Time: 02012026",
+        ]
+    )
+    other_payload = "\n".join(
+        [
+            "ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol",
+            "MSFT|Microsoft Corporation Common Stock|N|MSFT|N|100|N|MSFT",
+            "SPY|SPDR S&P 500 ETF Trust|P|SPY|Y|100|N|SPY",
+            "ATEST|Ignored Test Issue|A|ATEST|N|100|Y|ATEST",
+            "File Creation Time: 02012026",
+        ]
+    )
+
+    def fake_urlopen(req, timeout: int = 20):
+        del timeout
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        if "nasdaqlisted.txt" in url:
+            return _FakeResponse(nasdaq_payload)
+        if "otherlisted.txt" in url:
+            return _FakeResponse(other_payload)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(data_fetch.request, "urlopen", fake_urlopen)
+
+    frame = data_fetch.fetch_stock_universe_snapshot()
+
+    assert {"ticker", "security_name", "exchange", "is_etf", "source"}.issubset(set(frame.columns))
+    assert {"AAPL", "QQQ", "MSFT", "SPY"} == set(frame["ticker"].tolist())
+    assert "ZTEST" not in set(frame["ticker"].tolist())
+    assert "ATEST" not in set(frame["ticker"].tolist())
+
+    aapl = frame[frame["ticker"] == "AAPL"].iloc[0]
+    spy = frame[frame["ticker"] == "SPY"].iloc[0]
+    assert aapl["exchange"] == "NASDAQ Global Select"
+    assert bool(spy["is_etf"]) is True

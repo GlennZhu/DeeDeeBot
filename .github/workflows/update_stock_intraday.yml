@@ -28,7 +28,7 @@ jobs:
       - name: Run stock-only pipeline
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python -m src.pipeline --stock-only
+        run: python -m src.pipeline --stock-only --skip-scanner
 
       - name: Commit changed stock CSV files
         run: |
