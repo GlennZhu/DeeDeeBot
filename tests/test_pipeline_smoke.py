@@ -382,6 +382,68 @@ def test_select_scanner_universe_capped_excludes_non_watchlist_etfs_by_default()
     assert set(selected["ticker"].tolist()) == {"QQQ", "AAPL"}
 
 
+def test_apply_scanner_scope_limits_to_sp500_nasdaq500_and_watchlist(monkeypatch) -> None:
+    universe = pd.DataFrame(
+        [
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ Global Select",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "ABC",
+                "security_name": "Abc Corp",
+                "exchange": "NASDAQ Global Market",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "XYZ",
+                "security_name": "Xyz Inc.",
+                "exchange": "NYSE",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "IWM",
+                "security_name": "ETF Example",
+                "exchange": "NASDAQ Global Select",
+                "is_etf": True,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "WLT",
+                "security_name": "Watchlist Name",
+                "exchange": "",
+                "is_etf": False,
+                "universe_source": "watchlist_seed",
+                "is_watchlist": True,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+        ]
+    )
+    watchlist = pd.DataFrame([{"ticker": "WLT", "benchmark": "QQQ"}])
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_sp500_constituents",
+        lambda: pd.DataFrame([{"ticker": "XYZ", "source": "WIKIPEDIA_SP500"}]),
+    )
+
+    scoped = pipeline._apply_scanner_scope_sp500_nasdaq500(universe=universe, watchlist=watchlist)
+
+    assert set(scoped["ticker"].tolist()) == {"AAPL", "ABC", "XYZ", "WLT"}
+
+
 def test_detect_new_threshold_events_includes_negative_clears_only() -> None:
     previous = pd.DataFrame(
         [

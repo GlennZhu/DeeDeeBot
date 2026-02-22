@@ -99,7 +99,10 @@ Ticker sourcing beyond watchlist:
 - Caches universe to `data/derived/stock_universe.csv`
 - Keeps watchlist symbols pinned even if external source fetch fails
 - Refreshes universe at most once per 24 hours
-- Default breadth is tuned to scan up to 60 tickers per run
+- Scanner scope is restricted to `S&P 500 ∪ Nasdaq 500 proxy ∪ watchlist`
+  - S&P 500 source: Wikipedia constituents table
+  - Nasdaq 500 proxy: top 500 non-ETF Nasdaq-listed names (ranked by Nasdaq market tier, then symbol)
+- Default breadth is tuned to scan up to 60 scoped tickers per run
 - Intraday quote calls are prioritized for watchlist symbols (non-watchlist intraday is off by default)
 
 Scanner setups:
@@ -182,6 +185,6 @@ Notifications:
 
 Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only --skip-scanner` to keep watchlist alerts fresh intraday.
 
-Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs`.
+Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers`, which scans all names in the `S&P 500 + Nasdaq 500 proxy + watchlist` scope.
 
 `workflow_dispatch` remains available for both workflows.

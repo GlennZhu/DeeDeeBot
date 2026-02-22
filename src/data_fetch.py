@@ -14,7 +14,11 @@ from pandas_datareader.data import DataReader
 
 NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
-UNIVERSE_FETCH_USER_AGENT = "BingBingBot/1.0 (github-actions)"
+SP500_CONSTITUENTS_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+UNIVERSE_FETCH_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+)
 
 _OTHER_LISTED_EXCHANGE_MAP = {
     "A": "NYSE American",
@@ -147,6 +151,13 @@ def _normalize_universe_ticker(raw_value: str) -> str:
     return ticker
 
 
+def _normalize_index_ticker(raw_value: str) -> str:
+    ticker = _normalize_universe_ticker(raw_value)
+    if not ticker:
+        return ""
+    return ticker.replace(".", "-").replace("/", "-")
+
+
 def _coerce_bool_flag(raw_value: str) -> bool:
     return str(raw_value).strip().upper() in {"Y", "YES", "TRUE", "1"}
 
@@ -225,6 +236,31 @@ def fetch_stock_universe_snapshot() -> pd.DataFrame:
 
     deduped = frame.drop_duplicates(subset=["ticker"], keep="first").sort_values("ticker").reset_index(drop=True)
     return deduped[["ticker", "security_name", "exchange", "is_etf", "source"]]
+
+
+def fetch_sp500_constituents() -> pd.DataFrame:
+    """Fetch the latest S&P 500 constituents list."""
+    raw_html = _fetch_text_payload(SP500_CONSTITUENTS_URL)
+    tables = pd.read_html(io.StringIO(raw_html))
+    if not tables:
+        raise RuntimeError("No tables found in S&P 500 constituents source.")
+
+    source_table: pd.DataFrame | None = None
+    for table in tables:
+        if "Symbol" in table.columns:
+            source_table = table
+            break
+    if source_table is None:
+        raise RuntimeError("S&P 500 constituents table with 'Symbol' column not found.")
+
+    tickers = source_table["Symbol"].map(_normalize_index_ticker)
+    tickers = tickers[tickers != ""]
+    out = pd.DataFrame({"ticker": tickers})
+    out["source"] = "WIKIPEDIA_SP500"
+    out = out.drop_duplicates(subset=["ticker"]).sort_values("ticker").reset_index(drop=True)
+    if out.empty:
+        raise RuntimeError("S&P 500 constituents source returned no tickers.")
+    return out[["ticker", "source"]]
 
 
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:

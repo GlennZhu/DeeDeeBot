@@ -118,3 +118,23 @@ def test_fetch_stock_universe_snapshot_parses_nasdaq_trader_files(monkeypatch) -
     spy = frame[frame["ticker"] == "SPY"].iloc[0]
     assert aapl["exchange"] == "NASDAQ Global Select"
     assert bool(spy["is_etf"]) is True
+
+
+def test_fetch_sp500_constituents_parses_symbols(monkeypatch) -> None:
+    html = """
+    <html><body>
+    <table>
+      <tr><th>Symbol</th><th>Security</th></tr>
+      <tr><td>AAPL</td><td>Apple Inc.</td></tr>
+      <tr><td>BRK.B</td><td>Berkshire Hathaway</td></tr>
+      <tr><td>BF/B</td><td>Brown-Forman</td></tr>
+    </table>
+    </body></html>
+    """
+
+    monkeypatch.setattr(data_fetch, "_fetch_text_payload", lambda url: html)
+
+    frame = data_fetch.fetch_sp500_constituents()
+    assert frame.columns.tolist() == ["ticker", "source"]
+    assert set(frame["ticker"].tolist()) == {"AAPL", "BRK-B", "BF-B"}
+    assert set(frame["source"].tolist()) == {"WIKIPEDIA_SP500"}

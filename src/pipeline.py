@@ -18,6 +18,7 @@ from src.data_fetch import (
     fetch_fred_series,
     fetch_stock_daily_history,
     fetch_stock_intraday_quote,
+    fetch_sp500_constituents,
     fetch_stock_universe_snapshot,
 )
 from src.signals import compute_signals
@@ -43,6 +44,7 @@ SCANNER_DEFAULT_MAX_TICKERS = 60
 SCANNER_DEFAULT_MIN_PRICE = 5.0
 SCANNER_DEFAULT_NON_WATCHLIST_INTRADAY_QUOTES = 0
 SCANNER_DEFAULT_INCLUDE_ETFS = False
+SCANNER_NASDAQ_PROXY_TARGET_COUNT = 500
 SCANNER_UNIVERSE_REFRESH_HOURS = 24
 SCANNER_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.\-]{0,5}$")
 
@@ -749,6 +751,69 @@ def _select_scanner_universe(
     return selected[STOCK_UNIVERSE_COLUMNS]
 
 
+def _load_sp500_ticker_set() -> set[str]:
+    try:
+        sp500 = fetch_sp500_constituents()
+    except Exception as exc:
+        print(f"Warning: failed to fetch S&P 500 constituents; continuing without S&P overlay: {exc}")
+        return set()
+
+    if "ticker" not in sp500.columns:
+        return set()
+    tickers = sp500["ticker"].map(_normalize_ticker)
+    return {ticker for ticker in tickers.tolist() if ticker}
+
+
+def _build_nasdaq500_proxy_ticker_set(universe: pd.DataFrame) -> set[str]:
+    if universe.empty:
+        return set()
+
+    frame = universe.copy()
+    frame["ticker"] = frame["ticker"].map(_normalize_ticker)
+    frame["exchange"] = frame["exchange"].astype(str).str.strip().str.upper()
+    frame["is_etf"] = frame["is_etf"].map(_coerce_bool_flag)
+    frame = frame[frame["ticker"] != ""]
+    frame = frame[frame["exchange"].str.contains("NASDAQ", na=False)]
+    frame = frame[~frame["is_etf"]]
+    if frame.empty:
+        return set()
+
+    exchange_rank = {
+        "NASDAQ GLOBAL SELECT": 0,
+        "NASDAQ GLOBAL MARKET": 1,
+        "NASDAQ CAPITAL MARKET": 2,
+        "NASDAQ": 3,
+    }
+    frame["_exchange_rank"] = frame["exchange"].map(exchange_rank).fillna(4).astype(int)
+    frame = frame.sort_values(by=["_exchange_rank", "ticker"], ascending=[True, True])
+    top = frame.head(SCANNER_NASDAQ_PROXY_TARGET_COUNT)
+    return set(top["ticker"].tolist())
+
+
+def _apply_scanner_scope_sp500_nasdaq500(universe: pd.DataFrame, watchlist: pd.DataFrame) -> pd.DataFrame:
+    if universe.empty:
+        return universe
+
+    watchlist_tickers = set(watchlist["ticker"].map(_normalize_ticker).tolist())
+    sp500_tickers = _load_sp500_ticker_set()
+    nasdaq500_tickers = _build_nasdaq500_proxy_ticker_set(universe)
+    scope_tickers = watchlist_tickers | sp500_tickers | nasdaq500_tickers
+    if not scope_tickers:
+        return universe.copy()
+
+    scoped = universe.copy()
+    scoped["ticker"] = scoped["ticker"].map(_normalize_ticker)
+    scoped = scoped[scoped["ticker"].isin(scope_tickers)]
+    if scoped.empty:
+        return universe.copy()
+
+    for col in STOCK_UNIVERSE_COLUMNS:
+        if col not in scoped.columns:
+            scoped[col] = pd.NA
+
+    return scoped[STOCK_UNIVERSE_COLUMNS].drop_duplicates(subset=["ticker"]).sort_values("ticker").reset_index(drop=True)
+
+
 def _empty_scanner_signal_row(
     *,
     ticker: str,
@@ -1444,8 +1509,9 @@ def _run_stock_pipeline(
         minimum=0,
     )
     universe = _load_or_refresh_stock_universe(STOCK_UNIVERSE_PATH, watchlist=watchlist, now_iso=now_iso)
+    scoped_universe = _apply_scanner_scope_sp500_nasdaq500(universe=universe, watchlist=watchlist)
     selected_universe = _select_scanner_universe(
-        universe,
+        scoped_universe,
         max_tickers=configured_max_tickers,
         include_etfs=configured_include_etfs,
     )
