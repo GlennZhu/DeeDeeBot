@@ -100,12 +100,32 @@ EVENT_TYPE_COLORS = {
 DOMAIN_LABELS = {
     "macro": "Macro",
     "stock": "Stock",
+    "scanner": "Scanner",
 }
 
 DOMAIN_COLORS = {
     "macro": "#1f6feb",
     "stock": "#0f766e",
+    "scanner": "#7c3aed",
 }
+
+SCANNER_SIGNAL_FILTER_OPTIONS: list[dict[str, str]] = [
+    {
+        "label": "Bullish Alignment Trigger",
+        "trigger_col": "bullish_alignment_triggered_today",
+        "active_col": "bullish_alignment_active",
+    },
+    {
+        "label": "MA Recovery + Momentum Confirmation",
+        "trigger_col": "recovery_momentum_triggered_today",
+        "active_col": "recovery_momentum_triggered_today",
+    },
+    {
+        "label": "Ambush / Squat Alert",
+        "trigger_col": "ambush_squat_triggered_today",
+        "active_col": "ambush_squat_active",
+    },
+]
 
 
 @st.cache_data
@@ -376,6 +396,46 @@ def _as_bool(raw_value: object) -> bool:
     return str(raw_value).strip().lower() in {"true", "1", "yes", "y", "on"}
 
 
+def _scanner_signal_mask(frame: pd.DataFrame, signal_spec: dict[str, str], mode: str) -> pd.Series:
+    col_key = "trigger_col" if mode == "Triggered Today" else "active_col"
+    col = str(signal_spec.get(col_key, "")).strip()
+    if not col or col not in frame.columns:
+        return pd.Series(False, index=frame.index)
+    return frame[col].map(_as_bool)
+
+
+def _scanner_signal_labels_for_row(row: pd.Series) -> str:
+    labels: list[str] = []
+    for signal_spec in SCANNER_SIGNAL_FILTER_OPTIONS:
+        label = str(signal_spec.get("label", "")).strip()
+        trigger_col = str(signal_spec.get("trigger_col", "")).strip()
+        active_col = str(signal_spec.get("active_col", "")).strip()
+        if not label:
+            continue
+        if trigger_col and _as_bool(row.get(trigger_col)):
+            labels.append(f"{label} (Triggered)")
+        elif active_col and _as_bool(row.get(active_col)):
+            labels.append(f"{label} (Active)")
+    return " | ".join(labels)
+
+
+def _render_scanner_signal_guide() -> None:
+    with st.expander("Signal Definitions", expanded=False):
+        st.caption("Exact scanner logic implemented for the 3 EOD scanner signals.")
+        st.markdown(
+            "**Bullish Alignment Trigger**: Active when `SMA14 > SMA50` and (`SMA50 > SMA100` or `SMA50 > SMA200`). "
+            "Triggered today only when active today and not active yesterday."
+        )
+        st.markdown(
+            "**MA Recovery + Momentum Confirmation**: Triggered today when `Close > SMA50` and yesterday `Close <= SMA50`, "
+            "and the last 3 candles are bullish (`Close > Open` on each day)."
+        )
+        st.markdown(
+            "**Ambush / Squat Alert**: Active when bullish trend is confirmed (`SMA50 > SMA200`) and close is within "
+            "`0% to +2%` above `SMA100` or `SMA200`. Triggered today only when the active condition turns false -> true."
+        )
+
+
 def _render_macro_tab(selected_window: str) -> None:
     signals = _load_csv(DERIVED_DATA_DIR / "signals_latest.csv", ["as_of_date", "last_updated_utc"])
     snapshot = _load_csv(DERIVED_DATA_DIR / "metric_snapshot.csv", ["as_of_date", "last_updated_utc"])
@@ -588,35 +648,83 @@ def _render_scanner_tab() -> None:
 
     if "is_watchlist" not in scanner_signals.columns:
         scanner_signals["is_watchlist"] = False
-    if "scanner_candidate" not in scanner_signals.columns:
-        scanner_signals["scanner_candidate"] = False
-    if "leader_candidate" not in scanner_signals.columns:
-        scanner_signals["leader_candidate"] = False
+    bool_cols = [
+        "bullish_alignment_active",
+        "bullish_alignment_triggered_today",
+        "recovery_close_cross_sma50_today",
+        "recovery_three_bullish_candles_today",
+        "recovery_momentum_triggered_today",
+        "ambush_trend_bullish_active",
+        "ambush_near_ma100_active",
+        "ambush_near_ma200_active",
+        "ambush_squat_active",
+        "ambush_squat_triggered_today",
+    ]
+    for col in bool_cols:
+        if col not in scanner_signals.columns:
+            scanner_signals[col] = False
 
     scanner_signals["is_watchlist"] = scanner_signals["is_watchlist"].map(_as_bool)
-    scanner_signals["scanner_candidate"] = scanner_signals["scanner_candidate"].map(_as_bool)
-    scanner_signals["leader_candidate"] = scanner_signals["leader_candidate"].map(_as_bool)
+    for col in bool_cols:
+        scanner_signals[col] = scanner_signals[col].map(_as_bool)
+
+    trigger_cols = [
+        "bullish_alignment_triggered_today",
+        "recovery_momentum_triggered_today",
+        "ambush_squat_triggered_today",
+    ]
+    active_cols = [
+        "bullish_alignment_active",
+        "recovery_momentum_triggered_today",
+        "ambush_squat_active",
+    ]
+    scanner_signals["_any_triggered_today"] = scanner_signals[trigger_cols].any(axis=1)
+    scanner_signals["_any_active"] = scanner_signals[active_cols].any(axis=1)
 
     metric_cols = st.columns(4)
     metric_cols[0].metric("Scanned", len(scanner_signals))
-    metric_cols[1].metric("Candidates", int(scanner_signals["scanner_candidate"].sum()))
-    metric_cols[2].metric("Leaders", int(scanner_signals["leader_candidate"].sum()))
+    metric_cols[1].metric("Triggered Today", int(scanner_signals["_any_triggered_today"].sum()))
+    metric_cols[2].metric("Currently Active", int(scanner_signals["_any_active"].sum()))
     metric_cols[3].metric("Watchlist", int(scanner_signals["is_watchlist"].sum()))
 
-    filter_cols = st.columns(4)
-    only_candidates = filter_cols[0].checkbox("Only candidates", value=True)
-    include_watchlist_only = filter_cols[1].checkbox("Watchlist only", value=False)
-    min_score = filter_cols[2].number_input("Min scanner score", min_value=0.0, max_value=10.0, value=0.0, step=0.5)
-    search_term = filter_cols[3].text_input("Search", placeholder="Ticker, exchange, reason, thesis")
+    filter_cols = st.columns(5)
+    mode = filter_cols[0].selectbox("Mode", ["Triggered Today", "Currently Active"], index=0)
+    only_signal_rows = filter_cols[1].checkbox("Only rows with any signal", value=True)
+    include_watchlist_only = filter_cols[2].checkbox("Watchlist only", value=False)
+    require_all_signals = filter_cols[3].checkbox("Match all selected", value=False)
+    search_term = filter_cols[4].text_input("Search", placeholder="Ticker, exchange, name")
+
+    signal_labels = [option["label"] for option in SCANNER_SIGNAL_FILTER_OPTIONS]
+    selected_signal_labels = st.multiselect(
+        "Signal filter",
+        options=signal_labels,
+        default=[],
+        placeholder="Select one or more signals",
+        help="Triggered Today mode filters on event-driven trigger columns. Currently Active mode filters on active-state columns.",
+    )
+    _render_scanner_signal_guide()
 
     filtered = scanner_signals.copy()
-    if only_candidates:
-        filtered = filtered[filtered["scanner_candidate"]]
     if include_watchlist_only:
         filtered = filtered[filtered["is_watchlist"]]
-    if "scanner_score" in filtered.columns:
-        filtered["scanner_score"] = pd.to_numeric(filtered["scanner_score"], errors="coerce")
-        filtered = filtered[filtered["scanner_score"].fillna(0.0) >= float(min_score)]
+    if only_signal_rows:
+        if mode == "Triggered Today":
+            filtered = filtered[filtered["_any_triggered_today"]]
+        else:
+            filtered = filtered[filtered["_any_active"]]
+
+    if selected_signal_labels:
+        signal_specs_by_label = {option["label"]: option for option in SCANNER_SIGNAL_FILTER_OPTIONS}
+        selected_specs = [signal_specs_by_label[label] for label in selected_signal_labels if label in signal_specs_by_label]
+        if selected_specs:
+            signal_masks = [_scanner_signal_mask(filtered, spec, mode) for spec in selected_specs]
+            combined_mask = signal_masks[0].copy()
+            for mask in signal_masks[1:]:
+                if require_all_signals:
+                    combined_mask = combined_mask & mask
+                else:
+                    combined_mask = combined_mask | mask
+            filtered = filtered.loc[combined_mask]
 
     if search_term.strip():
         query = search_term.strip().lower()
@@ -624,9 +732,6 @@ def _render_scanner_tab() -> None:
             "ticker",
             "security_name",
             "exchange",
-            "scanner_reasons",
-            "thesis_tags",
-            "relative_strength_reasons",
         ]
         mask = pd.Series(False, index=filtered.index)
         for col in search_columns:
@@ -638,31 +743,33 @@ def _render_scanner_tab() -> None:
         st.info("No scanner rows match the selected filters.")
         return
 
-    if "scanner_score" not in filtered.columns:
-        filtered["scanner_score"] = pd.NA
-    if "leader_score" not in filtered.columns:
-        filtered["leader_score"] = pd.NA
-    filtered = filtered.sort_values(by=["scanner_candidate", "scanner_score", "ticker"], ascending=[False, False, True])
+    filtered["signal_summary"] = filtered.apply(_scanner_signal_labels_for_row, axis=1)
+    filtered = filtered.sort_values(by=["_any_triggered_today", "_any_active", "ticker"], ascending=[False, False, True])
 
     display_columns = [
         "ticker",
         "price",
-        "scanner_score",
-        "leader_score",
-        "scanner_candidate",
-        "leader_candidate",
-        "trend_established",
-        "crossback_three_green_confirmed",
-        "pullback_order_zone_ma100_or_ma200",
-        "entry_bullish_alignment",
-        "alpha_1m",
-        "rs_ratio",
-        "relative_strength_weak",
+        "open",
+        "sma14",
+        "sma50",
+        "sma100",
+        "sma200",
+        "gap_to_sma100_pct",
+        "gap_to_sma200_pct",
+        "bullish_alignment_active",
+        "bullish_alignment_triggered_today",
+        "recovery_close_cross_sma50_today",
+        "recovery_three_bullish_candles_today",
+        "recovery_momentum_triggered_today",
+        "ambush_trend_bullish_active",
+        "ambush_near_ma100_active",
+        "ambush_near_ma200_active",
+        "ambush_squat_active",
+        "ambush_squat_triggered_today",
         "is_watchlist",
         "exchange",
         "security_name",
-        "thesis_tags",
-        "scanner_reasons",
+        "signal_summary",
         "status",
     ]
     available_columns = [col for col in display_columns if col in filtered.columns]
@@ -736,15 +843,16 @@ def _render_signal_history_tab() -> None:
         signal_events["event_type"].str.title()
     )
 
-    metric_cols = st.columns(5)
+    metric_cols = st.columns(6)
     metric_cols[0].metric("Total (7D)", len(signal_events))
     metric_cols[1].metric("Macro", int((signal_events["domain"] == "macro").sum()))
     metric_cols[2].metric("Stock", int((signal_events["domain"] == "stock").sum()))
-    metric_cols[3].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
-    metric_cols[4].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
+    metric_cols[3].metric("Scanner", int((signal_events["domain"] == "scanner").sum()))
+    metric_cols[4].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
+    metric_cols[5].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
 
     filter_cols = st.columns(3)
-    selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock"], index=0)
+    selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock", "Scanner"], index=0)
     selected_event_type = filter_cols[1].selectbox("Event Type", ["All", "Triggered", "Cleared"], index=0)
     search_term = filter_cols[2].text_input("Search", placeholder="Ticker, metric, signal, or detail")
 

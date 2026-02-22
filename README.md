@@ -4,7 +4,7 @@ Dashboard and pipeline that track:
 
 - Macro regime signals (M2, Hiring, 10Y yield, Buffett indicator, Unemployment)
 - A stock watchlist with technical monitoring and first-time Discord alerts
-- A broader market scanner with automatic ticker sourcing beyond watchlist
+- A broader market EOD scanner with automatic ticker sourcing beyond watchlist
 
 ## Stack
 
@@ -21,7 +21,7 @@ Dashboard and pipeline that track:
 - `src/pipeline.py`: fetch/transform/signal/cache pipeline + Discord alerts
 - `src/signals.py`: macro signal logic and thresholds
 - `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence/relative strength)
-- `src/stock_scanner.py`: broad-universe scanner logic (leader/trend/crossback/pullback setups)
+- `src/stock_scanner.py`: broad-universe EOD scanner logic (3 exact signal triggers)
 - `src/data_fetch.py`: FRED and Stooq fetchers (daily + intraday quote endpoint)
 - `data/raw/*.csv`: per-metric historical macro series cache
 - `data/derived/metric_snapshot.csv`: latest macro values
@@ -29,8 +29,8 @@ Dashboard and pipeline that track:
 - `data/derived/stock_watchlist.csv`: tracked watchlist symbols
 - `data/derived/stock_signals_latest.csv`: latest stock signal states (includes intraday quote freshness fields)
 - `data/derived/stock_universe.csv`: auto-sourced scanner universe (watchlist + Nasdaq Trader directories)
-- `data/derived/scanner_signals_latest.csv`: latest scanner outputs and setup scores
-- `data/derived/scanner_thesis_tags.csv`: optional narrative tags (`pain_point`, `solution`, `conviction`)
+- `data/derived/scanner_signals_latest.csv`: latest scanner outputs (3-signal EOD states + trigger flags)
+- `data/derived/scanner_thesis_tags.csv`: optional narrative tags (retained for compatibility; no longer used for scanner ranking)
 - `data/derived/signal_events_7d.csv`: rolling 7-day signal event history (`triggered` and `cleared`)
 - `.github/workflows/update_data.yml`: weekday scheduled refresh (Eastern time guard)
 - `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Eastern extended-hours guard)
@@ -99,27 +99,35 @@ Ticker sourcing beyond watchlist:
 - Caches universe to `data/derived/stock_universe.csv`
 - Keeps watchlist symbols pinned even if external source fetch fails
 - Refreshes universe at most once per 24 hours
-- Default breadth is tuned to scan up to 60 tickers per run
-- Intraday quote calls are prioritized for watchlist symbols (non-watchlist intraday is off by default)
+- Scanner scope is restricted to `S&P 500 ∪ Nasdaq 500 proxy ∪ watchlist`
+  - S&P 500 source: Wikipedia constituents table
+  - Nasdaq 500 proxy: top 500 non-ETF Nasdaq-listed names (ranked by Nasdaq market tier, then symbol)
+- Default breadth is tuned to scan up to 60 scoped tickers per run
+- Scanner execution is bounded-parallel with shared request pacing to reduce provider throttling
 
-Scanner setups:
+Scanner signals (exact EOD implementations):
 
-1. Leader + right-side trend:
-- Trend established via `SMA14 > SMA50 > (SMA100 or SMA200)`
-- Relative-strength-aware leader score (`rs_ratio`, `alpha_1m`, weak-strength flags)
+1. Bullish Alignment Trigger:
+- Active when `SMA14 > SMA50` and (`SMA50 > SMA100` or `SMA50 > SMA200`)
+- Triggered only on the transition day (active today, not active yesterday)
 
-2. Cross-back confirmation:
-- Requires MA cross-back (`SMA14` crossing above `SMA50`)
-- Requires bullish RSI divergence at lows
-- Requires "three green candles" confirmation (implemented as three consecutive higher closes)
+2. Moving Average Recovery + Momentum Confirmation:
+- Triggered when `Close` crosses above `SMA50` today (`today > SMA50` and `yesterday <= SMA50`)
+- Requires 3 bullish candles (`Close > Open`) across the last 3 trading days
 
-3. Bull-market pullback zones:
-- Reuses the watchlist MA100/MA200 squat zone logic for ambush/support setups
+3. Ambush / Squat Alert:
+- Trend filter: `SMA50 > SMA200`
+- Active when close is within `0% to +2%` above `SMA100` or `SMA200`
+- Triggered only on the transition day (active today, not active yesterday)
 
-Manual thesis hooks:
+Scanner alerts:
+- Scanner trigger events are written into `signal_events_7d.csv` with `domain=scanner`
+- Newly triggered scanner signals are posted to Discord using the same `DISCORD_WEBHOOK_URL`
+
+Legacy thesis hooks (deprecated for scanner ranking):
 
 - `scanner_thesis_tags.csv` lets you add `pain_point`, `solution`, and `conviction` (0-2 score)
-- Conviction contributes to scanner ranking (`scanner_score`)
+- The file is retained, but conviction no longer affects scanner ranking
 
 ## Local Setup
 
@@ -143,15 +151,22 @@ python -m src.pipeline --macro-only
 python -m src.pipeline --stock-only
 python -m src.pipeline --stock-only --scanner-max-tickers 200
 python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs
+python -m src.pipeline --stock-only --scanner-max-tickers 200 --scanner-workers 8 --scanner-daily-rps 4.0
+python -m src.pipeline --stock-only --scanner-max-tickers 200 --scanner-progress-log-every 10
 python -m src.pipeline --stock-only --skip-scanner
+# tuned local scanner runner
+./scripts/run_scanner_tuned.sh
 ```
 
 Optional environment knobs:
 
 - `SCANNER_MAX_TICKERS` (default `60`)
-- `SCANNER_NON_WATCHLIST_INTRADAY_QUOTES` (default `0`)
+  - Applies to non-watchlist breadth only; watchlist symbols are always included on top
 - `SCANNER_ALL_TICKERS` (default `false`)
 - `SCANNER_INCLUDE_ETFS` (default `false`)
+- `SCANNER_PARALLEL_WORKERS` (default `8`)
+- `SCANNER_DAILY_REQUESTS_PER_SECOND` (default `4.0`)
+- `SCANNER_PROGRESS_LOG_EVERY` (default `25`)
 
 ## Run Dashboard
 
@@ -182,6 +197,6 @@ Notifications:
 
 Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only --skip-scanner` to keep watchlist alerts fresh intraday.
 
-Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs`.
+Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers`, which scans the full `S&P 500 + Nasdaq 500 proxy + watchlist` scope.
 
 `workflow_dispatch` remains available for both workflows.

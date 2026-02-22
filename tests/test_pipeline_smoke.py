@@ -14,6 +14,19 @@ def _series(values: list[float], start: str, freq: str) -> pd.Series:
     return pd.Series(values, index=idx, dtype=float)
 
 
+def _bars_frame(closes: list[float], start: str = "2025-01-02") -> pd.DataFrame:
+    idx = pd.date_range(start=start, periods=len(closes), freq="D")
+    frame = pd.DataFrame(
+        {
+            "Open": [float(value) - 1.0 for value in closes],
+            "Close": [float(value) for value in closes],
+        },
+        index=idx,
+    )
+    frame.attrs["source"] = "TEST_BARS"
+    return frame
+
+
 def _stock_row(ticker: str, **triggers: bool) -> dict[str, object]:
     row: dict[str, object] = {
         "ticker": ticker,
@@ -104,10 +117,42 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
             ]
         )
 
+    scanner_bars_by_ticker = {
+        # Bullish alignment trigger today.
+        "GOOG": _bars_frame([80.0] * 225 + [120.0] * 20 + [100.0] * 14 + [140.0]),
+        # Recovery + momentum trigger today.
+        "META": _bars_frame([100.0] * 257 + [98.0, 99.0, 101.0]),
+        # Ambush / squat trigger today.
+        "AMZN": _bars_frame([80.0] * 210 + [120.0] * 48 + [130.0, 101.0]),
+    }
+
+    def fake_fetch_stock_daily_bars(ticker: str, start_date: str) -> pd.DataFrame:
+        del start_date
+        if ticker in scanner_bars_by_ticker:
+            return scanner_bars_by_ticker[ticker].copy()
+        return _bars_frame([100.0] * 260)
+
+    def fake_fetch_stock_daily_bars_batch_yfinance(tickers: list[str], start_date: str) -> dict[str, pd.DataFrame]:
+        del start_date
+        out: dict[str, pd.DataFrame] = {}
+        for ticker in tickers:
+            ticker_key = str(ticker).upper()
+            if ticker_key in scanner_bars_by_ticker:
+                out[ticker_key] = scanner_bars_by_ticker[ticker_key].copy()
+        return out
+
     monkeypatch.setattr(pipeline, "fetch_fred_series", fake_fetch_fred_series)
     monkeypatch.setattr(pipeline, "fetch_stock_daily_history", fake_fetch_stock_daily_history)
+    monkeypatch.setattr(pipeline, "fetch_stock_daily_history_batch_yfinance", lambda tickers, start_date: {})
+    monkeypatch.setattr(pipeline, "fetch_stock_daily_bars", fake_fetch_stock_daily_bars)
+    monkeypatch.setattr(pipeline, "fetch_stock_daily_bars_batch_yfinance", fake_fetch_stock_daily_bars_batch_yfinance)
     monkeypatch.setattr(pipeline, "fetch_stock_intraday_quote", fake_fetch_stock_intraday_quote)
     monkeypatch.setattr(pipeline, "fetch_stock_universe_snapshot", fake_fetch_stock_universe_snapshot)
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_sp500_constituents",
+        lambda: pd.DataFrame([{"ticker": "META", "source": "WIKIPEDIA_SP500"}]),
+    )
 
     pipeline.run_pipeline(start_date="2024-01-01", lookback_years=15, scanner_max_tickers=7)
 
@@ -220,19 +265,27 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "exchange",
         "universe_source",
         "is_watchlist",
-        "thesis_score",
-        "trend_established",
-        "crossback_three_green_confirmed",
-        "pullback_order_zone_ma100_or_ma200",
-        "leader_score",
-        "scanner_score",
-        "leader_candidate",
-        "scanner_candidate",
-        "scanner_reasons",
+        "price",
+        "open",
+        "sma14",
+        "sma50",
+        "sma100",
+        "sma200",
+        "bullish_alignment_active",
+        "bullish_alignment_triggered_today",
+        "recovery_close_cross_sma50_today",
+        "recovery_three_bullish_candles_today",
+        "recovery_momentum_triggered_today",
+        "ambush_trend_bullish_active",
+        "ambush_squat_active",
+        "ambush_squat_triggered_today",
         "status",
         "last_updated_utc",
     }.issubset(set(scanner_signals.columns))
     assert {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ", "META", "AMZN"}.issubset(set(scanner_signals["ticker"].tolist()))
+    assert bool(scanner_signals["bullish_alignment_triggered_today"].fillna(False).astype(bool).any())
+    assert bool(scanner_signals["recovery_momentum_triggered_today"].fillna(False).astype(bool).any())
+    assert bool(scanner_signals["ambush_squat_triggered_today"].fillna(False).astype(bool).any())
 
     thesis = pd.read_csv(derived_dir / "scanner_thesis_tags.csv")
     assert thesis.columns.tolist() == pipeline.SCANNER_THESIS_COLUMNS
@@ -243,6 +296,14 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
     if not signal_events.empty:
         assert signal_events["event_timestamp_utc"].notna().all()
         assert set(signal_events["event_type"].dropna().tolist()).issubset({"triggered", "cleared"})
+        assert "scanner" in set(signal_events["domain"].dropna().astype(str).str.lower().tolist())
+        scanner_rows = signal_events[signal_events["domain"].astype(str).str.lower() == "scanner"]
+        assert set(scanner_rows["event_type"].astype(str).str.lower().unique().tolist()) <= {"triggered"}
+        assert {
+            "bullish_alignment_trigger",
+            "recovery_momentum_trigger",
+            "ambush_squat_trigger",
+        }.issubset(set(scanner_rows["signal_id"].astype(str).tolist()))
 
 
 def test_detect_new_threshold_events_flags_only_new_trigger() -> None:
@@ -382,6 +443,121 @@ def test_select_scanner_universe_capped_excludes_non_watchlist_etfs_by_default()
     assert set(selected["ticker"].tolist()) == {"QQQ", "AAPL"}
 
 
+def test_select_scanner_universe_cap_applies_beyond_watchlist_not_total() -> None:
+    universe = pd.DataFrame(
+        [
+            {
+                "ticker": "W1",
+                "security_name": "Watch 1",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": True,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "W2",
+                "security_name": "Watch 2",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": True,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "MSFT",
+                "security_name": "Microsoft",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+        ]
+    )
+
+    selected = pipeline._select_scanner_universe(
+        universe,
+        max_tickers=1,
+        include_etfs=False,
+    )
+
+    # Both watchlist names stay pinned, plus 1 extra non-watchlist row.
+    assert {"W1", "W2"}.issubset(set(selected["ticker"].tolist()))
+    assert len(selected) == 3
+
+
+def test_apply_scanner_scope_limits_to_sp500_nasdaq500_and_watchlist(monkeypatch) -> None:
+    universe = pd.DataFrame(
+        [
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ Global Select",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "ABC",
+                "security_name": "Abc Corp",
+                "exchange": "NASDAQ Global Market",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "XYZ",
+                "security_name": "Xyz Inc.",
+                "exchange": "NYSE",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "IWM",
+                "security_name": "ETF Example",
+                "exchange": "NASDAQ Global Select",
+                "is_etf": True,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+            {
+                "ticker": "WLT",
+                "security_name": "Watchlist Name",
+                "exchange": "",
+                "is_etf": False,
+                "universe_source": "watchlist_seed",
+                "is_watchlist": True,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            },
+        ]
+    )
+    watchlist = pd.DataFrame([{"ticker": "WLT", "benchmark": "QQQ"}])
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_sp500_constituents",
+        lambda: pd.DataFrame([{"ticker": "XYZ", "source": "WIKIPEDIA_SP500"}]),
+    )
+
+    scoped = pipeline._apply_scanner_scope_sp500_nasdaq500(universe=universe, watchlist=watchlist)
+
+    assert set(scoped["ticker"].tolist()) == {"AAPL", "ABC", "XYZ", "WLT"}
+
+
 def test_detect_new_threshold_events_includes_negative_clears_only() -> None:
     previous = pd.DataFrame(
         [
@@ -449,6 +625,7 @@ def test_update_signal_event_history_writes_macro_rows_for_triggered_and_cleared
         path,
         macro_events=macro_events,
         stock_events=[],
+        scanner_events=[],
         now_iso="2026-02-10T00:00:00Z",
     )
 
@@ -494,6 +671,7 @@ def test_update_signal_event_history_writes_stock_rows_for_triggered_and_cleared
         path,
         macro_events=[],
         stock_events=stock_events,
+        scanner_events=[],
         now_iso="2026-02-10T00:00:00Z",
     )
 
@@ -509,6 +687,42 @@ def test_update_signal_event_history_writes_stock_rows_for_triggered_and_cleared
     non_strong_sell = events[events["signal_id"] == "exit_price_below_sma50"].iloc[0]
     assert strong_sell["details"] == "RS_TREND_DOWN"
     assert non_strong_sell["details"] == ""
+
+
+def test_update_signal_event_history_writes_scanner_rows_for_triggered_events(tmp_path: Path) -> None:
+    path = tmp_path / "signal_events_7d.csv"
+    scanner_events = [
+        {
+            "ticker": "GOOG",
+            "security_name": "Alphabet Inc.",
+            "signal_id": "bullish_alignment_trigger",
+            "signal_label": "Bullish Alignment Trigger",
+            "event_type": "triggered",
+            "as_of_date": "2026-02-10",
+            "price": 140.0,
+            "status": "ok",
+            "details": "sma14=102.8; sma50=102.7; sma100=91.4; sma200=85.7",
+        }
+    ]
+
+    pipeline._update_signal_event_history(
+        path,
+        macro_events=[],
+        stock_events=[],
+        scanner_events=scanner_events,
+        now_iso="2026-02-10T00:00:00Z",
+    )
+
+    events = pd.read_csv(path, keep_default_na=False)
+
+    assert len(events) == 1
+    row = events.iloc[0]
+    assert row["domain"] == "scanner"
+    assert row["event_type"] == "triggered"
+    assert row["subject_id"] == "GOOG"
+    assert row["subject_name"] == "Alphabet Inc."
+    assert row["signal_id"] == "bullish_alignment_trigger"
+    assert row["details"] != ""
 
 
 def test_update_signal_event_history_prunes_to_exact_7_day_window(tmp_path: Path) -> None:
@@ -547,6 +761,7 @@ def test_update_signal_event_history_prunes_to_exact_7_day_window(tmp_path: Path
         path,
         macro_events=[],
         stock_events=[],
+        scanner_events=[],
         now_iso="2026-02-10T00:00:00Z",
     )
 
@@ -562,6 +777,7 @@ def test_update_signal_event_history_creates_empty_csv_with_headers_when_no_even
         path,
         macro_events=[],
         stock_events=[],
+        scanner_events=[],
         now_iso="2026-02-10T00:00:00Z",
     )
 

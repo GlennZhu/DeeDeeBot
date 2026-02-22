@@ -1,14 +1,13 @@
-"""Signal logic for scanning a broader stock universe beyond the watchlist."""
+"""End-of-day scanner logic for the broad stock universe."""
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
 
-from src.stock_signals import compute_rsi14, compute_sma, compute_stock_signal_row
-
-LEADER_SCORE_THRESHOLD = 3.0
+from src.stock_signals import compute_sma
 
 SCANNER_SIGNAL_COLUMNS = [
     "ticker",
@@ -17,56 +16,43 @@ SCANNER_SIGNAL_COLUMNS = [
     "universe_source",
     "is_watchlist",
     "is_etf",
-    "thesis_tags",
-    "thesis_score",
-    "benchmark_ticker",
     "as_of_date",
     "price",
-    "day_change",
-    "day_change_pct",
-    "intraday_quote_timestamp_utc",
-    "intraday_quote_age_seconds",
-    "intraday_quote_source",
+    "open",
     "sma14",
     "sma50",
     "sma100",
     "sma200",
-    "rsi14",
-    "benchmark_price",
-    "benchmark_sma50",
-    "rs_ratio",
-    "rs_ratio_ma20",
-    "alpha_1m",
-    "relative_strength_weak",
-    "relative_strength_reasons",
-    "entry_bullish_alignment",
-    "squat_ambush_near_ma100_or_ma200",
-    "squat_dca_below_ma100",
-    "squat_last_stand_ma200",
-    "squat_breakdown_below_ma200",
-    "trend_established",
-    "crossback_ma14_over_ma50",
-    "three_green_candles",
-    "bullish_rsi_divergence",
-    "crossback_three_green_confirmed",
-    "pullback_order_zone_ma100_or_ma200",
-    "leader_score",
-    "scanner_score",
-    "leader_candidate",
-    "scanner_candidate",
-    "scanner_reasons",
+    "gap_to_sma100_pct",
+    "gap_to_sma200_pct",
+    "bullish_alignment_active",
+    "bullish_alignment_triggered_today",
+    "recovery_close_cross_sma50_today",
+    "recovery_three_bullish_candles_today",
+    "recovery_momentum_triggered_today",
+    "ambush_trend_bullish_active",
+    "ambush_near_ma100_active",
+    "ambush_near_ma200_active",
+    "ambush_squat_active",
+    "ambush_squat_triggered_today",
     "source",
     "stale_days",
     "status",
     "status_message",
 ]
 
-
-def _clean_price_series(series: pd.Series) -> pd.Series:
-    clean = series.copy()
-    clean.index = pd.to_datetime(clean.index).tz_localize(None)
-    clean = clean.sort_index().dropna().astype(float)
-    return clean
+_SCANNER_BOOL_COLUMNS = [
+    "bullish_alignment_active",
+    "bullish_alignment_triggered_today",
+    "recovery_close_cross_sma50_today",
+    "recovery_three_bullish_candles_today",
+    "recovery_momentum_triggered_today",
+    "ambush_trend_bullish_active",
+    "ambush_near_ma100_active",
+    "ambush_near_ma200_active",
+    "ambush_squat_active",
+    "ambush_squat_triggered_today",
+]
 
 
 def _is_valid_number(value: Any) -> bool:
@@ -77,260 +63,278 @@ def _safe_gt(lhs: Any, rhs: Any) -> bool:
     return _is_valid_number(lhs) and _is_valid_number(rhs) and float(lhs) > float(rhs)
 
 
-def _safe_lt(lhs: Any, rhs: Any) -> bool:
-    return _is_valid_number(lhs) and _is_valid_number(rhs) and float(lhs) < float(rhs)
+def _safe_lte(lhs: Any, rhs: Any) -> bool:
+    return _is_valid_number(lhs) and _is_valid_number(rhs) and float(lhs) <= float(rhs)
 
 
-def _find_swing_low_positions(series: pd.Series, left: int = 3, right: int = 3) -> list[int]:
-    if series.empty:
-        return []
-
-    values = series.astype(float).tolist()
-    positions: list[int] = []
-    upper_bound = len(values) - right
-    for idx in range(left, upper_bound):
-        center = values[idx]
-        if pd.isna(center):
-            continue
-
-        left_window = [value for value in values[idx - left : idx] if pd.notna(value)]
-        right_window = [value for value in values[idx + 1 : idx + right + 1] if pd.notna(value)]
-        if not left_window or not right_window:
-            continue
-
-        if center < min(left_window) and center <= min(right_window):
-            positions.append(idx)
-    return positions
+def _gap_to_ma_pct(price: Any, ma_value: Any) -> float:
+    if not _is_valid_number(price) or not _is_valid_number(ma_value):
+        return float("nan")
+    if float(ma_value) == 0:
+        return float("nan")
+    return (float(price) - float(ma_value)) / float(ma_value)
 
 
-def _rsi_trough_for_price_trough(
-    trough_pos: int,
-    rsi_series: pd.Series,
-    rsi_trough_positions: list[int],
-    max_distance: int = 3,
-) -> float | None:
-    nearby = [idx for idx in rsi_trough_positions if abs(idx - trough_pos) <= max_distance and pd.notna(rsi_series.iloc[idx])]
-    if nearby:
-        selected = min(nearby, key=lambda idx: abs(idx - trough_pos))
-        return float(rsi_series.iloc[selected])
-
-    if 0 <= trough_pos < len(rsi_series) and pd.notna(rsi_series.iloc[trough_pos]):
-        return float(rsi_series.iloc[trough_pos])
-    return None
+def _in_ambush_band(gap_pct: Any) -> bool:
+    return _is_valid_number(gap_pct) and 0.0 <= float(gap_pct) <= 0.02
 
 
-def detect_bullish_rsi_divergence(
-    price_series: pd.Series,
-    rsi_series: pd.Series,
-    lookback: int = 120,
-    left: int = 3,
-    right: int = 3,
-) -> bool:
-    """Detect bullish RSI divergence using the latest two confirmed price lows."""
-    if price_series.empty or rsi_series.empty:
+def _normalize_scanner_bars(daily_bars: pd.DataFrame) -> pd.DataFrame:
+    if daily_bars is None or not isinstance(daily_bars, pd.DataFrame):
+        return pd.DataFrame()
+    if daily_bars.empty:
+        return pd.DataFrame()
+
+    out = daily_bars.copy()
+    out.index = pd.to_datetime(out.index, errors="coerce")
+    if getattr(out.index, "tz", None) is not None:
+        out.index = out.index.tz_localize(None)
+    out = out[~out.index.isna()]
+    out = out.sort_index()
+    out = out[~out.index.duplicated(keep="last")]
+
+    canonical_name = {
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "adj close": "Adj Close",
+        "adj_close": "Adj Close",
+        "volume": "Volume",
+    }
+    rename_map: dict[str, str] = {}
+    for raw_col in out.columns:
+        key = str(raw_col).strip().lower()
+        if key in canonical_name:
+            rename_map[raw_col] = canonical_name[key]
+    if rename_map:
+        out = out.rename(columns=rename_map)
+
+    for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    if "Close" not in out.columns and "Adj Close" in out.columns:
+        out["Close"] = pd.to_numeric(out["Adj Close"], errors="coerce")
+
+    return out
+
+
+def _alignment_active(ma14: Any, ma50: Any, ma100: Any, ma200: Any) -> bool:
+    return _safe_gt(ma14, ma50) and (_safe_gt(ma50, ma100) or _safe_gt(ma50, ma200))
+
+
+def _three_bullish_candles(open_series: pd.Series, close_series: pd.Series) -> bool:
+    if len(open_series) < 3 or len(close_series) < 3:
         return False
-
-    price_recent = price_series.iloc[-lookback:].astype(float)
-    rsi_recent = rsi_series.reindex(price_recent.index).astype(float)
-    if len(price_recent) < (left + right + 2):
+    recent_open = open_series.iloc[-3:]
+    recent_close = close_series.iloc[-3:]
+    if recent_open.isna().any() or recent_close.isna().any():
         return False
-
-    price_troughs = _find_swing_low_positions(price_recent, left=left, right=right)
-    if len(price_troughs) < 2:
-        return False
-
-    p1_pos, p2_pos = price_troughs[-2], price_troughs[-1]
-    p1 = float(price_recent.iloc[p1_pos])
-    p2 = float(price_recent.iloc[p2_pos])
-
-    rsi_troughs = _find_swing_low_positions(rsi_recent, left=left, right=right)
-    r1 = _rsi_trough_for_price_trough(p1_pos, rsi_recent, rsi_troughs)
-    r2 = _rsi_trough_for_price_trough(p2_pos, rsi_recent, rsi_troughs)
-    if r1 is None or r2 is None:
-        return False
-
-    return p2 < p1 and r2 > r1
+    return bool((recent_close > recent_open).all())
 
 
-def _crossback_ma14_over_ma50(price_series: pd.Series) -> bool:
-    clean = _clean_price_series(price_series)
-    ma14 = compute_sma(clean, 14)
-    ma50 = compute_sma(clean, 50)
-    if len(ma14) < 2 or len(ma50) < 2:
-        return False
-
-    current_up = _safe_gt(ma14.iloc[-1], ma50.iloc[-1])
-    previous_below_or_equal = _is_valid_number(ma14.iloc[-2]) and _is_valid_number(ma50.iloc[-2]) and float(ma14.iloc[-2]) <= float(ma50.iloc[-2])
-    return bool(current_up and previous_below_or_equal)
-
-
-def _three_green_candles(price_series: pd.Series) -> bool:
-    clean = _clean_price_series(price_series)
-    if len(clean) < 4:
-        return False
-    return bool(clean.iloc[-1] > clean.iloc[-2] > clean.iloc[-3] > clean.iloc[-4])
-
-
-def _build_scanner_reasons(
+def _build_empty_row(
     *,
-    leader_candidate: bool,
-    trend_established: bool,
-    crossback_three_green_confirmed: bool,
-    pullback_order_zone: bool,
-) -> str:
-    reasons: list[str] = []
-    if leader_candidate and trend_established:
-        reasons.append("LEADER_TREND")
-    if crossback_three_green_confirmed:
-        reasons.append("CROSSBACK_3_GREEN")
-    if pullback_order_zone:
-        reasons.append("PULLBACK_MA100_MA200")
-    if not reasons:
-        reasons.append("NO_ACTIVE_SETUP")
-    return "; ".join(reasons)
-
-
-def _leader_score(stock_row: dict[str, Any]) -> float:
-    score = 0.0
-    if bool(stock_row.get("entry_bullish_alignment", False)):
-        score += 1.0
-    if not bool(stock_row.get("relative_strength_weak", False)):
-        score += 1.0
-
-    rs_ratio = stock_row.get("rs_ratio")
-    rs_ratio_ma20 = stock_row.get("rs_ratio_ma20")
-    if _safe_gt(rs_ratio, rs_ratio_ma20):
-        score += 1.0
-
-    alpha_1m = stock_row.get("alpha_1m")
-    if _is_valid_number(alpha_1m) and float(alpha_1m) > 0:
-        score += 1.0
-
-    price = stock_row.get("price")
-    sma50 = stock_row.get("sma50")
-    sma200 = stock_row.get("sma200")
-    if _safe_gt(price, sma50) and _safe_gt(sma50, sma200):
-        score += 1.0
-
-    return round(float(score), 2)
+    ticker: str,
+    security_name: str,
+    exchange: str,
+    universe_source: str,
+    is_watchlist: bool,
+    is_etf: bool,
+    status: str,
+    status_message: str,
+) -> dict[str, Any]:
+    row: dict[str, Any] = {column: pd.NA for column in SCANNER_SIGNAL_COLUMNS}
+    row.update(
+        {
+            "ticker": ticker,
+            "security_name": security_name,
+            "exchange": exchange,
+            "universe_source": universe_source,
+            "is_watchlist": bool(is_watchlist),
+            "is_etf": bool(is_etf),
+            "status": status,
+            "status_message": status_message,
+            "source": f"STOCK:{ticker}",
+        }
+    )
+    for col in _SCANNER_BOOL_COLUMNS:
+        row[col] = False
+    return row
 
 
 def compute_scanner_signal_row(
     ticker: str,
-    daily_close: pd.Series,
+    daily_bars: pd.DataFrame,
     *,
-    latest_price: float | None = None,
-    benchmark_ticker: str = "QQQ",
-    benchmark_close: pd.Series | None = None,
-    benchmark_latest_price: float | None = None,
     is_watchlist: bool = False,
     security_name: str = "",
     exchange: str = "",
     universe_source: str = "",
     is_etf: bool = False,
-    thesis_tags: str = "",
-    thesis_score: float = 0.0,
 ) -> dict[str, Any]:
-    """Compute scanner row from a stock history and optional benchmark/intraday values."""
-    base_row = compute_stock_signal_row(
-        ticker=ticker,
-        daily_close=daily_close,
-        latest_price=latest_price,
-        benchmark_ticker=benchmark_ticker,
-        benchmark_close=benchmark_close,
-        benchmark_latest_price=benchmark_latest_price,
+    """Compute a simplified EOD scanner row from daily OHLC bars."""
+    ticker_clean = str(ticker).strip().upper()
+    security_name_clean = str(security_name).strip()
+    exchange_clean = str(exchange).strip()
+    universe_source_clean = str(universe_source).strip()
+
+    bars = _normalize_scanner_bars(daily_bars)
+    if bars.empty:
+        return _build_empty_row(
+            ticker=ticker_clean,
+            security_name=security_name_clean,
+            exchange=exchange_clean,
+            universe_source=universe_source_clean,
+            is_watchlist=is_watchlist,
+            is_etf=is_etf,
+            status="fetch_error",
+            status_message="Daily OHLC bars are empty.",
+        )
+
+    if "Open" not in bars.columns or "Close" not in bars.columns:
+        return _build_empty_row(
+            ticker=ticker_clean,
+            security_name=security_name_clean,
+            exchange=exchange_clean,
+            universe_source=universe_source_clean,
+            is_watchlist=is_watchlist,
+            is_etf=is_etf,
+            status="insufficient_data",
+            status_message="Daily bars must include Open and Close columns.",
+        )
+
+    close_series = bars["Close"].dropna().astype(float)
+    if close_series.empty:
+        return _build_empty_row(
+            ticker=ticker_clean,
+            security_name=security_name_clean,
+            exchange=exchange_clean,
+            universe_source=universe_source_clean,
+            is_watchlist=is_watchlist,
+            is_etf=is_etf,
+            status="insufficient_data",
+            status_message="Daily close series is empty after cleaning.",
+        )
+
+    open_series = pd.to_numeric(bars["Open"], errors="coerce").reindex(close_series.index)
+    sma14_series = compute_sma(close_series, 14)
+    sma50_series = compute_sma(close_series, 50)
+    sma100_series = compute_sma(close_series, 100)
+    sma200_series = compute_sma(close_series, 200)
+
+    as_of_ts = pd.Timestamp(close_series.index[-1])
+    source = str(getattr(daily_bars, "attrs", {}).get("source", "") or bars.attrs.get("source", "") or f"STOCK:{ticker_clean}")
+
+    base_row = _build_empty_row(
+        ticker=ticker_clean,
+        security_name=security_name_clean,
+        exchange=exchange_clean,
+        universe_source=universe_source_clean,
+        is_watchlist=is_watchlist,
+        is_etf=is_etf,
+        status="ok",
+        status_message="Scanner signals computed successfully.",
+    )
+    base_row.update(
+        {
+            "as_of_date": as_of_ts.date().isoformat(),
+            "price": float(close_series.iloc[-1]),
+            "open": float(open_series.iloc[-1]) if pd.notna(open_series.iloc[-1]) else pd.NA,
+            "source": source,
+            "stale_days": int((datetime.now(timezone.utc).date() - as_of_ts.date()).days),
+        }
     )
 
-    clean = _clean_price_series(daily_close)
-    rsi14_series = compute_rsi14(clean, period=14)
-    crossback_ma14_over_ma50 = _crossback_ma14_over_ma50(clean)
-    three_green_candles = _three_green_candles(clean)
-    bullish_rsi_divergence = detect_bullish_rsi_divergence(clean, rsi14_series)
-    crossback_three_green_confirmed = bool(crossback_ma14_over_ma50 and three_green_candles and bullish_rsi_divergence)
+    if len(close_series) < 201:
+        base_row["status"] = "insufficient_data"
+        base_row["status_message"] = f"Need at least 201 daily bars; found {len(close_series)}."
+        return base_row
 
-    trend_established = bool(base_row.get("entry_bullish_alignment", False))
-    pullback_order_zone = bool(
-        base_row.get("squat_ambush_near_ma100_or_ma200", False)
-        or base_row.get("squat_last_stand_ma200", False)
+    required_current_prev = [
+        sma14_series.iloc[-1],
+        sma50_series.iloc[-1],
+        sma100_series.iloc[-1],
+        sma200_series.iloc[-1],
+        sma14_series.iloc[-2],
+        sma50_series.iloc[-2],
+        sma100_series.iloc[-2],
+        sma200_series.iloc[-2],
+        close_series.iloc[-1],
+        close_series.iloc[-2],
+    ]
+    if any(pd.isna(v) for v in required_current_prev):
+        base_row["status"] = "insufficient_data"
+        base_row["status_message"] = "Insufficient data for scanner moving averages."
+        return base_row
+
+    if len(open_series) < 3 or open_series.iloc[-3:].isna().any():
+        base_row["status"] = "insufficient_data"
+        base_row["status_message"] = "Missing open prices for the last three bars."
+        return base_row
+
+    sma14 = float(sma14_series.iloc[-1])
+    sma50 = float(sma50_series.iloc[-1])
+    sma100 = float(sma100_series.iloc[-1])
+    sma200 = float(sma200_series.iloc[-1])
+    sma14_prev = float(sma14_series.iloc[-2])
+    sma50_prev = float(sma50_series.iloc[-2])
+    sma100_prev = float(sma100_series.iloc[-2])
+    sma200_prev = float(sma200_series.iloc[-2])
+    close_now = float(close_series.iloc[-1])
+    close_prev = float(close_series.iloc[-2])
+    open_now = float(open_series.iloc[-1])
+
+    gap_to_sma100_pct = _gap_to_ma_pct(close_now, sma100)
+    gap_to_sma200_pct = _gap_to_ma_pct(close_now, sma200)
+    gap_to_sma100_prev_pct = _gap_to_ma_pct(close_prev, sma100_prev)
+    gap_to_sma200_prev_pct = _gap_to_ma_pct(close_prev, sma200_prev)
+
+    bullish_alignment_active = _alignment_active(sma14, sma50, sma100, sma200)
+    bullish_alignment_prev = _alignment_active(sma14_prev, sma50_prev, sma100_prev, sma200_prev)
+    bullish_alignment_triggered_today = bool(bullish_alignment_active and not bullish_alignment_prev)
+
+    recovery_close_cross_sma50_today = bool(close_now > sma50 and close_prev <= sma50_prev)
+    recovery_three_bullish_candles_today = _three_bullish_candles(open_series, close_series)
+    recovery_momentum_triggered_today = bool(recovery_close_cross_sma50_today and recovery_three_bullish_candles_today)
+
+    ambush_trend_bullish_active = bool(sma50 > sma200)
+    ambush_near_ma100_active = _in_ambush_band(gap_to_sma100_pct)
+    ambush_near_ma200_active = _in_ambush_band(gap_to_sma200_pct)
+    ambush_squat_active = bool(ambush_trend_bullish_active and (ambush_near_ma100_active or ambush_near_ma200_active))
+
+    ambush_trend_prev = bool(sma50_prev > sma200_prev)
+    ambush_near_ma100_prev = _in_ambush_band(gap_to_sma100_prev_pct)
+    ambush_near_ma200_prev = _in_ambush_band(gap_to_sma200_prev_pct)
+    ambush_squat_prev = bool(ambush_trend_prev and (ambush_near_ma100_prev or ambush_near_ma200_prev))
+    ambush_squat_triggered_today = bool(ambush_squat_active and not ambush_squat_prev)
+
+    base_row.update(
+        {
+            "price": close_now,
+            "open": open_now,
+            "sma14": sma14,
+            "sma50": sma50,
+            "sma100": sma100,
+            "sma200": sma200,
+            "gap_to_sma100_pct": gap_to_sma100_pct,
+            "gap_to_sma200_pct": gap_to_sma200_pct,
+            "bullish_alignment_active": bool(bullish_alignment_active),
+            "bullish_alignment_triggered_today": bool(bullish_alignment_triggered_today),
+            "recovery_close_cross_sma50_today": bool(recovery_close_cross_sma50_today),
+            "recovery_three_bullish_candles_today": bool(recovery_three_bullish_candles_today),
+            "recovery_momentum_triggered_today": bool(recovery_momentum_triggered_today),
+            "ambush_trend_bullish_active": bool(ambush_trend_bullish_active),
+            "ambush_near_ma100_active": bool(ambush_near_ma100_active),
+            "ambush_near_ma200_active": bool(ambush_near_ma200_active),
+            "ambush_squat_active": bool(ambush_squat_active),
+            "ambush_squat_triggered_today": bool(ambush_squat_triggered_today),
+        }
     )
-
-    thesis_score_clean = max(0.0, float(thesis_score))
-    leader_score = _leader_score(base_row)
-    scanner_score = round(leader_score + thesis_score_clean, 2)
-    leader_candidate = scanner_score >= LEADER_SCORE_THRESHOLD
-    scanner_candidate = bool((leader_candidate and trend_established) or crossback_three_green_confirmed or pullback_order_zone)
-
-    status = str(base_row.get("status", ""))
-    if status != "ok":
-        leader_score = 0.0
-        scanner_score = 0.0
-        leader_candidate = False
-        scanner_candidate = False
-        trend_established = False
-        crossback_ma14_over_ma50 = False
-        three_green_candles = False
-        bullish_rsi_divergence = False
-        crossback_three_green_confirmed = False
-        pullback_order_zone = False
-
-    scanner_reasons = _build_scanner_reasons(
-        leader_candidate=leader_candidate,
-        trend_established=trend_established,
-        crossback_three_green_confirmed=crossback_three_green_confirmed,
-        pullback_order_zone=pullback_order_zone,
-    )
-    row: dict[str, Any] = {
-        "ticker": str(base_row.get("ticker", ticker)).upper(),
-        "security_name": str(security_name).strip(),
-        "exchange": str(exchange).strip(),
-        "universe_source": str(universe_source).strip(),
-        "is_watchlist": bool(is_watchlist),
-        "is_etf": bool(is_etf),
-        "thesis_tags": str(thesis_tags).strip(),
-        "thesis_score": round(thesis_score_clean, 2),
-        "benchmark_ticker": str(base_row.get("benchmark_ticker", benchmark_ticker)).upper(),
-        "as_of_date": base_row.get("as_of_date"),
-        "price": base_row.get("price"),
-        "day_change": base_row.get("day_change"),
-        "day_change_pct": base_row.get("day_change_pct"),
-        "intraday_quote_timestamp_utc": base_row.get("intraday_quote_timestamp_utc"),
-        "intraday_quote_age_seconds": base_row.get("intraday_quote_age_seconds"),
-        "intraday_quote_source": base_row.get("intraday_quote_source"),
-        "sma14": base_row.get("sma14"),
-        "sma50": base_row.get("sma50"),
-        "sma100": base_row.get("sma100"),
-        "sma200": base_row.get("sma200"),
-        "rsi14": base_row.get("rsi14"),
-        "benchmark_price": base_row.get("benchmark_price"),
-        "benchmark_sma50": base_row.get("benchmark_sma50"),
-        "rs_ratio": base_row.get("rs_ratio"),
-        "rs_ratio_ma20": base_row.get("rs_ratio_ma20"),
-        "alpha_1m": base_row.get("alpha_1m"),
-        "relative_strength_weak": bool(base_row.get("relative_strength_weak", False)),
-        "relative_strength_reasons": str(base_row.get("relative_strength_reasons", "")),
-        "entry_bullish_alignment": bool(base_row.get("entry_bullish_alignment", False)),
-        "squat_ambush_near_ma100_or_ma200": bool(base_row.get("squat_ambush_near_ma100_or_ma200", False)),
-        "squat_dca_below_ma100": bool(base_row.get("squat_dca_below_ma100", False)),
-        "squat_last_stand_ma200": bool(base_row.get("squat_last_stand_ma200", False)),
-        "squat_breakdown_below_ma200": bool(base_row.get("squat_breakdown_below_ma200", False)),
-        "trend_established": bool(trend_established),
-        "crossback_ma14_over_ma50": bool(crossback_ma14_over_ma50),
-        "three_green_candles": bool(three_green_candles),
-        "bullish_rsi_divergence": bool(bullish_rsi_divergence),
-        "crossback_three_green_confirmed": bool(crossback_three_green_confirmed),
-        "pullback_order_zone_ma100_or_ma200": bool(pullback_order_zone),
-        "leader_score": float(leader_score),
-        "scanner_score": float(scanner_score),
-        "leader_candidate": bool(leader_candidate),
-        "scanner_candidate": bool(scanner_candidate),
-        "scanner_reasons": scanner_reasons,
-        "source": base_row.get("source"),
-        "stale_days": base_row.get("stale_days"),
-        "status": base_row.get("status"),
-        "status_message": base_row.get("status_message"),
-    }
 
     for col in SCANNER_SIGNAL_COLUMNS:
-        if col not in row:
-            row[col] = pd.NA
-    return row
+        if col not in base_row:
+            base_row[col] = pd.NA
+    return base_row
+

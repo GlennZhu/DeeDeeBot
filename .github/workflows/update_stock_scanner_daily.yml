@@ -46,12 +46,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run full-universe stock scanner
+      - name: Run daily S&P500 + Nasdaq500 EOD 3-signal scanner
         if: steps.guard.outputs.run_pipeline == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          SCANNER_NON_WATCHLIST_INTRADAY_QUOTES: "0"
-        run: python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs
+          SCANNER_PARALLEL_WORKERS: "8"
+          SCANNER_DAILY_REQUESTS_PER_SECOND: "4.0"
+          SCANNER_PROGRESS_LOG_EVERY: "25"
+        run: python -m src.pipeline --stock-only --scanner-all-tickers
 
       - name: Commit changed scanner CSV files
         if: steps.guard.outputs.run_pipeline == 'true'

@@ -47,6 +47,28 @@ def test_fetch_stock_daily_history_uses_stooq_symbol_candidates(monkeypatch) -> 
     assert "BRK-B.US" in calls
 
 
+def test_fetch_stock_daily_history_falls_back_to_yfinance_when_stooq_fails(monkeypatch) -> None:
+    def fake_datareader(symbol: str, source: str, start: str) -> pd.DataFrame:
+        del symbol, source, start
+        raise RuntimeError("stooq unavailable")
+
+    class _FakeYF:
+        @staticmethod
+        def download(*, tickers: str, start: str, interval: str, auto_adjust: bool, progress: bool, threads: bool) -> pd.DataFrame:
+            del start, interval, auto_adjust, progress, threads
+            if tickers == "AAPL":
+                return _frame_with_close([180.0, 181.5, 183.2])
+            return pd.DataFrame()
+
+    monkeypatch.setattr(data_fetch, "DataReader", fake_datareader)
+    monkeypatch.setattr(data_fetch, "yf", _FakeYF())
+
+    series = data_fetch.fetch_stock_daily_history("AAPL", "2024-01-01")
+
+    assert float(series.iloc[-1]) == pytest.approx(183.2)
+    assert series.attrs["source"] == "YFINANCE:AAPL"
+
+
 def test_fetch_stock_intraday_quote_uses_stooq_quote(monkeypatch) -> None:
     def fake_urlopen(url: str, timeout: int = 10) -> _FakeResponse:
         del timeout
@@ -118,3 +140,120 @@ def test_fetch_stock_universe_snapshot_parses_nasdaq_trader_files(monkeypatch) -
     spy = frame[frame["ticker"] == "SPY"].iloc[0]
     assert aapl["exchange"] == "NASDAQ Global Select"
     assert bool(spy["is_etf"]) is True
+
+
+def test_fetch_sp500_constituents_parses_symbols(monkeypatch) -> None:
+    html = """
+    <html><body>
+    <table>
+      <tr><th>Symbol</th><th>Security</th></tr>
+      <tr><td>AAPL</td><td>Apple Inc.</td></tr>
+      <tr><td>BRK.B</td><td>Berkshire Hathaway</td></tr>
+      <tr><td>BF/B</td><td>Brown-Forman</td></tr>
+    </table>
+    </body></html>
+    """
+
+    monkeypatch.setattr(data_fetch, "_fetch_text_payload", lambda url: html)
+
+    frame = data_fetch.fetch_sp500_constituents()
+    assert frame.columns.tolist() == ["ticker", "source"]
+    assert set(frame["ticker"].tolist()) == {"AAPL", "BRK-B", "BF-B"}
+    assert set(frame["source"].tolist()) == {"WIKIPEDIA_SP500"}
+
+
+def test_fetch_stock_daily_bars_batch_yfinance_parses_multiindex_ohlc(monkeypatch) -> None:
+    idx = pd.date_range("2026-01-01", periods=3, freq="D")
+    columns = pd.MultiIndex.from_tuples(
+        [
+            ("Open", "AAPL"),
+            ("High", "AAPL"),
+            ("Low", "AAPL"),
+            ("Close", "AAPL"),
+            ("Volume", "AAPL"),
+            ("Open", "MSFT"),
+            ("Close", "MSFT"),
+        ]
+    )
+    frame = pd.DataFrame(
+        [
+            [100.0, 101.0, 99.0, 100.5, 1_000_000, 200.0, 201.0],
+            [101.0, 102.0, 100.0, 101.5, 1_100_000, 201.0, 202.0],
+            [102.0, 103.0, 101.0, 102.5, 1_200_000, 202.0, 203.0],
+        ],
+        index=idx,
+        columns=columns,
+    )
+
+    class _FakeYF:
+        @staticmethod
+        def download(*, tickers: str, start: str, interval: str, auto_adjust: bool, progress: bool, threads: bool) -> pd.DataFrame:
+            del start, interval, auto_adjust, progress, threads
+            assert tickers == "AAPL MSFT TSLA"
+            return frame
+
+    monkeypatch.setattr(data_fetch, "yf", _FakeYF())
+
+    out = data_fetch.fetch_stock_daily_bars_batch_yfinance(["AAPL", "MSFT", "TSLA"], "2024-01-01", batch_size=10, pause_seconds=0.0)
+
+    assert set(out.keys()) == {"AAPL", "MSFT"}
+    assert {"Open", "Close"}.issubset(set(out["AAPL"].columns))
+    assert float(out["AAPL"]["Close"].iloc[-1]) == pytest.approx(102.5)
+    assert out["AAPL"].attrs["source"] == "YFINANCE:AAPL"
+    assert float(out["MSFT"]["Open"].iloc[0]) == pytest.approx(200.0)
+    assert out["MSFT"].attrs["source"] == "YFINANCE:MSFT"
+
+
+def test_fetch_stock_daily_bars_batch_yfinance_parses_single_symbol_flat_columns(monkeypatch) -> None:
+    idx = pd.date_range("2026-01-01", periods=2, freq="D")
+    frame = pd.DataFrame(
+        {
+            "Open": [10.0, 11.0],
+            "High": [10.5, 11.5],
+            "Low": [9.5, 10.5],
+            "Close": [10.2, 11.2],
+            "Volume": [1000, 1100],
+        },
+        index=idx,
+    )
+
+    class _FakeYF:
+        @staticmethod
+        def download(*, tickers: str, start: str, interval: str, auto_adjust: bool, progress: bool, threads: bool) -> pd.DataFrame:
+            del start, interval, auto_adjust, progress, threads
+            assert tickers == "AAPL"
+            return frame
+
+    monkeypatch.setattr(data_fetch, "yf", _FakeYF())
+
+    out = data_fetch.fetch_stock_daily_bars_batch_yfinance(["AAPL"], "2024-01-01", batch_size=1, pause_seconds=0.0)
+
+    assert set(out.keys()) == {"AAPL"}
+    assert {"Open", "Close"}.issubset(set(out["AAPL"].columns))
+    assert float(out["AAPL"]["Open"].iloc[-1]) == pytest.approx(11.0)
+    assert float(out["AAPL"]["Close"].iloc[-1]) == pytest.approx(11.2)
+
+
+def test_fetch_stock_daily_bars_falls_back_to_yfinance_when_stooq_fails(monkeypatch) -> None:
+    def fake_datareader(symbol: str, source: str, start: str) -> pd.DataFrame:
+        del symbol, source, start
+        raise RuntimeError("stooq unavailable")
+
+    idx = pd.date_range("2026-01-01", periods=2, freq="D")
+    yf_frame = pd.DataFrame({"Open": [10.0, 11.0], "Close": [10.5, 11.5]}, index=idx)
+
+    class _FakeYF:
+        @staticmethod
+        def download(*, tickers: str, start: str, interval: str, auto_adjust: bool, progress: bool, threads: bool) -> pd.DataFrame:
+            del start, interval, auto_adjust, progress, threads
+            assert tickers == "AAPL"
+            return yf_frame
+
+    monkeypatch.setattr(data_fetch, "DataReader", fake_datareader)
+    monkeypatch.setattr(data_fetch, "yf", _FakeYF())
+
+    bars = data_fetch.fetch_stock_daily_bars("AAPL", "2024-01-01")
+
+    assert {"Open", "Close"}.issubset(set(bars.columns))
+    assert float(bars["Close"].iloc[-1]) == pytest.approx(11.5)
+    assert bars.attrs["source"] == "YFINANCE:AAPL"

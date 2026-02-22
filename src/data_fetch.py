@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib import request
@@ -12,9 +13,18 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from pandas_datareader.data import DataReader
 
+try:
+    import yfinance as yf
+except Exception:  # pragma: no cover - optional dependency fallback
+    yf = None  # type: ignore[assignment]
+
 NASDAQ_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 OTHER_LISTED_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
-UNIVERSE_FETCH_USER_AGENT = "BingBingBot/1.0 (github-actions)"
+SP500_CONSTITUENTS_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+UNIVERSE_FETCH_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+)
 
 _OTHER_LISTED_EXCHANGE_MAP = {
     "A": "NYSE American",
@@ -47,6 +57,69 @@ def _extract_close_series(frame: pd.DataFrame) -> pd.Series:
     return pd.Series(dtype=float)
 
 
+def _normalize_ohlc_frame(frame: pd.DataFrame, frame_name: str) -> pd.DataFrame:
+    """Return normalized OHLCV bars with timezone-naive datetime index."""
+    if frame.empty:
+        return pd.DataFrame()
+
+    out = frame.copy()
+    out.index = pd.to_datetime(out.index, errors="coerce").tz_localize(None)
+    out = out[~out.index.isna()]
+    out = out.sort_index()
+    out = out[~out.index.duplicated(keep="last")]
+
+    canonical_name = {
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "adj close": "Adj Close",
+        "adj_close": "Adj Close",
+        "volume": "Volume",
+    }
+    rename_map: dict[str, str] = {}
+    for raw_col in out.columns:
+        key = str(raw_col).strip().lower()
+        if key in canonical_name:
+            rename_map[raw_col] = canonical_name[key]
+    if rename_map:
+        out = out.rename(columns=rename_map)
+
+    keep_cols = [col for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if col in out.columns]
+    if not keep_cols:
+        return pd.DataFrame()
+    out = out[keep_cols].copy()
+
+    for col in keep_cols:
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    if "Close" not in out.columns and "Adj Close" in out.columns:
+        out["Close"] = pd.to_numeric(out["Adj Close"], errors="coerce")
+    if "Close" in out.columns:
+        out = out[out["Close"].notna()]
+
+    out.attrs["source"] = frame_name
+    return out
+
+
+def _extract_yfinance_batch_bars_frame(frame: pd.DataFrame, yahoo_symbol: str) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame()
+
+    if isinstance(frame.columns, pd.MultiIndex):
+        data: dict[str, pd.Series] = {}
+        for price_col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+            key = (price_col, yahoo_symbol)
+            if key in frame.columns:
+                data[price_col] = frame[key]
+        if not data:
+            return pd.DataFrame()
+        return pd.DataFrame(data, index=frame.index)
+
+    # Single-symbol download path usually uses flat columns.
+    return frame.copy()
+
+
 def _stock_symbol_variants(raw_symbol: str) -> list[str]:
     variants: list[str] = []
     for variant in [raw_symbol, raw_symbol.replace(".", "-"), raw_symbol.replace("/", "-")]:
@@ -65,6 +138,18 @@ def _stooq_symbol_candidates(raw_symbol: str) -> list[str]:
         if variant not in symbols:
             symbols.append(variant)
     return symbols
+
+
+def _yfinance_symbol_candidates(raw_symbol: str) -> list[str]:
+    return _stock_symbol_variants(raw_symbol)
+
+
+def _preferred_yfinance_symbol(raw_symbol: str) -> str:
+    variants = _yfinance_symbol_candidates(raw_symbol)
+    for variant in variants:
+        if "." not in variant and "/" not in variant:
+            return variant
+    return variants[0] if variants else raw_symbol.strip().upper()
 
 
 def _parse_stooq_quote_timestamp(
@@ -147,6 +232,13 @@ def _normalize_universe_ticker(raw_value: str) -> str:
     return ticker
 
 
+def _normalize_index_ticker(raw_value: str) -> str:
+    ticker = _normalize_universe_ticker(raw_value)
+    if not ticker:
+        return ""
+    return ticker.replace(".", "-").replace("/", "-")
+
+
 def _coerce_bool_flag(raw_value: str) -> bool:
     return str(raw_value).strip().upper() in {"Y", "YES", "TRUE", "1"}
 
@@ -227,6 +319,242 @@ def fetch_stock_universe_snapshot() -> pd.DataFrame:
     return deduped[["ticker", "security_name", "exchange", "is_etf", "source"]]
 
 
+def fetch_sp500_constituents() -> pd.DataFrame:
+    """Fetch the latest S&P 500 constituents list."""
+    raw_html = _fetch_text_payload(SP500_CONSTITUENTS_URL)
+    tables = pd.read_html(io.StringIO(raw_html))
+    if not tables:
+        raise RuntimeError("No tables found in S&P 500 constituents source.")
+
+    source_table: pd.DataFrame | None = None
+    for table in tables:
+        if "Symbol" in table.columns:
+            source_table = table
+            break
+    if source_table is None:
+        raise RuntimeError("S&P 500 constituents table with 'Symbol' column not found.")
+
+    tickers = source_table["Symbol"].map(_normalize_index_ticker)
+    tickers = tickers[tickers != ""]
+    out = pd.DataFrame({"ticker": tickers})
+    out["source"] = "WIKIPEDIA_SP500"
+    out = out.drop_duplicates(subset=["ticker"]).sort_values("ticker").reset_index(drop=True)
+    if out.empty:
+        raise RuntimeError("S&P 500 constituents source returned no tickers.")
+    return out[["ticker", "source"]]
+
+
+def _fetch_yfinance_daily_bars(raw_symbol: str, start_date: str) -> pd.DataFrame | None:
+    if yf is None:
+        return None
+
+    for yahoo_symbol in _yfinance_symbol_candidates(raw_symbol):
+        try:
+            frame = yf.download(  # type: ignore[union-attr]
+                tickers=yahoo_symbol,
+                start=start_date,
+                interval="1d",
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+        except Exception:
+            continue
+        normalized = _normalize_ohlc_frame(frame, f"YFINANCE:{yahoo_symbol}")
+        if normalized.empty:
+            continue
+        return normalized
+    return None
+
+
+def fetch_stock_daily_bars_batch_yfinance(
+    tickers: list[str],
+    start_date: str,
+    *,
+    batch_size: int = 100,
+    pause_seconds: float = 0.4,
+) -> dict[str, pd.DataFrame]:
+    """Fetch daily OHLCV history for many tickers from Yahoo in batches."""
+    if yf is None:
+        return {}
+    if not tickers:
+        return {}
+
+    normalized_tickers: list[str] = []
+    seen: set[str] = set()
+    for raw_ticker in tickers:
+        ticker = str(raw_ticker).strip().upper()
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        normalized_tickers.append(ticker)
+    if not normalized_tickers:
+        return {}
+
+    results: dict[str, pd.DataFrame] = {}
+    symbol_map = {ticker: _preferred_yfinance_symbol(ticker) for ticker in normalized_tickers}
+    items = list(symbol_map.items())
+    step = max(1, int(batch_size))
+
+    for offset in range(0, len(items), step):
+        batch_items = items[offset : offset + step]
+        batch_symbols = [symbol for _, symbol in batch_items]
+        try:
+            frame = yf.download(  # type: ignore[union-attr]
+                tickers=" ".join(batch_symbols),
+                start=start_date,
+                interval="1d",
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+        except Exception:
+            frame = pd.DataFrame()
+
+        for ticker, yahoo_symbol in batch_items:
+            raw_bars = _extract_yfinance_batch_bars_frame(frame, yahoo_symbol)
+            normalized = _normalize_ohlc_frame(raw_bars, f"YFINANCE:{yahoo_symbol}")
+            if normalized.empty:
+                continue
+            results[ticker] = normalized
+
+        if pause_seconds > 0 and (offset + step) < len(items):
+            time.sleep(float(pause_seconds))
+
+    return results
+
+
+def fetch_stock_daily_bars(ticker: str, start_date: str) -> pd.DataFrame:
+    """Fetch daily OHLCV bars for a stock ticker from Stooq, with Yahoo fallback."""
+    raw_symbol = str(ticker).strip().upper()
+    if not raw_symbol:
+        raise RuntimeError("Ticker cannot be empty.")
+
+    last_error: Exception | None = None
+    for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
+        try:
+            frame = DataReader(stooq_symbol, "stooq", start=start_date)
+            normalized = _normalize_ohlc_frame(frame, f"STOOQ:{stooq_symbol}")
+            if normalized.empty:
+                continue
+            return normalized
+        except Exception as exc:
+            last_error = exc
+
+    fallback = _fetch_yfinance_daily_bars(raw_symbol, start_date)
+    if fallback is not None:
+        return fallback
+
+    if last_error is not None:
+        raise RuntimeError(f"No daily OHLC data returned from Stooq or Yahoo for {raw_symbol}: {last_error}") from last_error
+    raise RuntimeError(f"No daily OHLC data returned from Stooq or Yahoo for {raw_symbol}.")
+
+
+def _fetch_yfinance_daily_history(raw_symbol: str, start_date: str) -> pd.Series | None:
+    if yf is None:
+        return None
+
+    for yahoo_symbol in _yfinance_symbol_candidates(raw_symbol):
+        try:
+            frame = yf.download(  # type: ignore[union-attr]
+                tickers=yahoo_symbol,
+                start=start_date,
+                interval="1d",
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+        except Exception:
+            continue
+        close = _extract_close_series(frame)
+        if close.empty:
+            continue
+        normalized = _normalize_series(close, raw_symbol)
+        if normalized.empty:
+            continue
+        normalized.attrs["source"] = f"YFINANCE:{yahoo_symbol}"
+        return normalized
+    return None
+
+
+def _extract_yfinance_batch_close_series(frame: pd.DataFrame, yahoo_symbol: str) -> pd.Series:
+    if frame.empty:
+        return pd.Series(dtype=float)
+
+    if isinstance(frame.columns, pd.MultiIndex):
+        for price_col in ["Close", "Adj Close"]:
+            key = (price_col, yahoo_symbol)
+            if key in frame.columns:
+                return frame[key].dropna().astype(float)
+        return pd.Series(dtype=float)
+
+    return _extract_close_series(frame)
+
+
+def fetch_stock_daily_history_batch_yfinance(
+    tickers: list[str],
+    start_date: str,
+    *,
+    batch_size: int = 100,
+    pause_seconds: float = 0.4,
+) -> dict[str, pd.Series]:
+    """Fetch daily close history for many tickers from Yahoo in batches.
+
+    Returns only successful ticker series.
+    """
+    if yf is None:
+        return {}
+    if not tickers:
+        return {}
+
+    normalized_tickers = []
+    seen: set[str] = set()
+    for raw_ticker in tickers:
+        ticker = str(raw_ticker).strip().upper()
+        if not ticker or ticker in seen:
+            continue
+        seen.add(ticker)
+        normalized_tickers.append(ticker)
+
+    if not normalized_tickers:
+        return {}
+
+    results: dict[str, pd.Series] = {}
+    symbol_map = {ticker: _preferred_yfinance_symbol(ticker) for ticker in normalized_tickers}
+    items = list(symbol_map.items())
+    step = max(1, int(batch_size))
+
+    for offset in range(0, len(items), step):
+        batch_items = items[offset : offset + step]
+        batch_symbols = [symbol for _, symbol in batch_items]
+        try:
+            frame = yf.download(  # type: ignore[union-attr]
+                tickers=" ".join(batch_symbols),
+                start=start_date,
+                interval="1d",
+                auto_adjust=False,
+                progress=False,
+                threads=False,
+            )
+        except Exception:
+            frame = pd.DataFrame()
+
+        for ticker, yahoo_symbol in batch_items:
+            close = _extract_yfinance_batch_close_series(frame, yahoo_symbol)
+            if close.empty:
+                continue
+            normalized = _normalize_series(close, ticker)
+            if normalized.empty:
+                continue
+            normalized.attrs["source"] = f"YFINANCE:{yahoo_symbol}"
+            results[ticker] = normalized
+
+        if pause_seconds > 0 and (offset + step) < len(items):
+            time.sleep(float(pause_seconds))
+
+    return results
+
+
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
     """Fetch a single FRED series as a normalized pandas Series."""
     frame = DataReader(series_id, "fred", start=start_date)
@@ -236,7 +564,7 @@ def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
 
 
 def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
-    """Fetch daily close history for a stock ticker from Stooq only."""
+    """Fetch daily close history for a stock ticker from Stooq, with Yahoo fallback."""
     raw_symbol = str(ticker).strip().upper()
     if not raw_symbol:
         raise RuntimeError("Ticker cannot be empty.")
@@ -258,15 +586,19 @@ def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
         except Exception as exc:
             last_error = exc
 
+    fallback = _fetch_yfinance_daily_history(raw_symbol, start_date)
+    if fallback is not None:
+        return fallback
+
     if last_error is not None:
         raise RuntimeError(
-            f"No daily stock data returned from Stooq for {raw_symbol}: {last_error}"
+            f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}: {last_error}"
         ) from last_error
-    raise RuntimeError(f"No daily stock data returned from Stooq for {raw_symbol}.")
+    raise RuntimeError(f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}.")
 
 
 def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
-    """Fetch latest intraday quote details from Stooq quote endpoint."""
+    """Fetch latest intraday quote details from Stooq quote endpoint, with Yahoo fallback."""
     raw_symbol = str(ticker).strip().upper()
     if not raw_symbol:
         return None
@@ -327,6 +659,52 @@ def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
                 "quote_timestamp_utc": quote_timestamp_iso,
                 "quote_age_seconds": quote_age_seconds,
                 "source": f"STOOQ_INTRADAY:{stooq_symbol}",
+            }
+
+    if yf is not None:
+        for yahoo_symbol in _yfinance_symbol_candidates(raw_symbol):
+            try:
+                ticker_obj = yf.Ticker(yahoo_symbol)  # type: ignore[union-attr]
+                fast_info = getattr(ticker_obj, "fast_info", None)
+            except Exception:
+                continue
+
+            if not fast_info:
+                continue
+            try:
+                price = fast_info.get("lastPrice")
+                if price is None:
+                    price = fast_info.get("regularMarketPrice")
+                if price is None:
+                    continue
+                price_value = float(price)
+            except Exception:
+                continue
+            if price_value <= 0:
+                continue
+
+            previous_close_raw = fast_info.get("previousClose")
+            previous_close: float | None = None
+            try:
+                if previous_close_raw is not None:
+                    previous_close = float(previous_close_raw)
+            except Exception:
+                previous_close = None
+
+            day_change: float | None = None
+            day_change_pct: float | None = None
+            if previous_close not in (None, 0):
+                day_change = price_value - float(previous_close)
+                day_change_pct = day_change / float(previous_close)
+
+            return {
+                "price": price_value,
+                "previous_close": previous_close,
+                "day_change": day_change,
+                "day_change_pct": day_change_pct,
+                "quote_timestamp_utc": None,
+                "quote_age_seconds": None,
+                "source": f"YFINANCE_INTRADAY:{yahoo_symbol}",
             }
 
     return None
