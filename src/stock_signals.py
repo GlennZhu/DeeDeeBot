@@ -19,6 +19,7 @@ STOCK_TRIGGER_COLUMNS = [
     "exit_death_cross_50_lt_100",
     "exit_death_cross_50_lt_200",
     "exit_rsi_overbought",
+    "rsi_bullish_divergence",
     "rsi_bearish_divergence",
     "strong_sell_weak_strength",
     "squat_ambush_near_ma100_or_ma200",
@@ -133,6 +134,31 @@ def _find_swing_high_positions(series: pd.Series, left: int = 3, right: int = 3)
     return positions
 
 
+def _find_swing_low_positions(series: pd.Series, left: int = 3, right: int = 3) -> list[int]:
+    """Find swing-low bar positions in a numeric series."""
+    if series.empty:
+        return []
+
+    values = series.astype(float).tolist()
+    positions: list[int] = []
+    upper_bound = len(values) - right
+
+    for idx in range(left, upper_bound):
+        center = values[idx]
+        if pd.isna(center):
+            continue
+
+        left_window = [v for v in values[idx - left : idx] if pd.notna(v)]
+        right_window = [v for v in values[idx + 1 : idx + right + 1] if pd.notna(v)]
+        if not left_window or not right_window:
+            continue
+
+        if center < min(left_window) and center <= min(right_window):
+            positions.append(idx)
+
+    return positions
+
+
 def _rsi_peak_for_price_peak(
     peak_pos: int,
     rsi_series: pd.Series,
@@ -151,6 +177,59 @@ def _rsi_peak_for_price_peak(
     if 0 <= peak_pos < len(rsi_series) and pd.notna(rsi_series.iloc[peak_pos]):
         return float(rsi_series.iloc[peak_pos])
     return None
+
+
+def _rsi_trough_for_price_trough(
+    trough_pos: int,
+    rsi_series: pd.Series,
+    rsi_trough_positions: list[int],
+    max_distance: int = 3,
+) -> float | None:
+    close_troughs = [
+        idx
+        for idx in rsi_trough_positions
+        if abs(idx - trough_pos) <= max_distance and pd.notna(rsi_series.iloc[idx])
+    ]
+    if close_troughs:
+        selected = min(close_troughs, key=lambda idx: abs(idx - trough_pos))
+        return float(rsi_series.iloc[selected])
+
+    if 0 <= trough_pos < len(rsi_series) and pd.notna(rsi_series.iloc[trough_pos]):
+        return float(rsi_series.iloc[trough_pos])
+    return None
+
+
+def detect_bullish_rsi_divergence(
+    price_series: pd.Series,
+    rsi_series: pd.Series,
+    lookback: int = 120,
+    left: int = 3,
+    right: int = 3,
+) -> bool:
+    """Detect bullish RSI divergence using the two latest confirmed price lows."""
+    if price_series.empty or rsi_series.empty:
+        return False
+
+    price_recent = price_series.iloc[-lookback:].astype(float)
+    rsi_recent = rsi_series.reindex(price_recent.index).astype(float)
+    if len(price_recent) < (left + right + 2):
+        return False
+
+    price_troughs = _find_swing_low_positions(price_recent, left=left, right=right)
+    if len(price_troughs) < 2:
+        return False
+
+    p1_pos, p2_pos = price_troughs[-2], price_troughs[-1]
+    p1 = float(price_recent.iloc[p1_pos])
+    p2 = float(price_recent.iloc[p2_pos])
+
+    rsi_troughs = _find_swing_low_positions(rsi_recent, left=left, right=right)
+    r1 = _rsi_trough_for_price_trough(p1_pos, rsi_recent, rsi_troughs)
+    r2 = _rsi_trough_for_price_trough(p2_pos, rsi_recent, rsi_troughs)
+    if r1 is None or r2 is None:
+        return False
+
+    return p2 < p1 and r2 > r1
 
 
 def detect_bearish_rsi_divergence(
@@ -339,6 +418,7 @@ def compute_stock_signal_row(
     exit_death_cross_50_lt_100 = _safe_lt(sma50, sma100)
     exit_death_cross_50_lt_200 = _safe_lt(sma50, sma200)
     exit_rsi_overbought = _is_valid_number(rsi14) and float(rsi14) > 80.0
+    rsi_bullish_divergence = detect_bullish_rsi_divergence(evaluated, rsi14_series)
     rsi_bearish_divergence = detect_bearish_rsi_divergence(evaluated, rsi14_series)
 
     squat_bull_market_precondition = _safe_gt(daily_sma200, prev_sma200) or _safe_gt(daily_sma50, daily_sma200)
@@ -428,6 +508,7 @@ def compute_stock_signal_row(
         exit_death_cross_50_lt_100 = False
         exit_death_cross_50_lt_200 = False
         exit_rsi_overbought = False
+        rsi_bullish_divergence = False
         rsi_bearish_divergence = False
         strong_sell_weak_strength = False
         squat_bull_market_precondition = False
@@ -484,6 +565,7 @@ def compute_stock_signal_row(
         "exit_death_cross_50_lt_100": bool(exit_death_cross_50_lt_100),
         "exit_death_cross_50_lt_200": bool(exit_death_cross_50_lt_200),
         "exit_rsi_overbought": bool(exit_rsi_overbought),
+        "rsi_bullish_divergence": bool(rsi_bullish_divergence),
         "rsi_bearish_divergence": bool(rsi_bearish_divergence),
         "strong_sell_weak_strength": bool(strong_sell_weak_strength),
         "squat_ambush_near_ma100_or_ma200": bool(squat_ambush_near_ma100_or_ma200),

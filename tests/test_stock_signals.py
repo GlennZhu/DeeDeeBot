@@ -120,6 +120,65 @@ def test_detect_bearish_rsi_divergence_true_and_false_controls() -> None:
     assert not stock_signals.detect_bearish_rsi_divergence(prices, rsi_not_bearish, left=3, right=3)
 
 
+def test_detect_bullish_rsi_divergence_true_and_false_controls() -> None:
+    prices = _series(
+        [
+            120,
+            118,
+            116,
+            112,
+            108,
+            104,
+            108,
+            112,
+            116,
+            118,
+            114,
+            110,
+            106,
+            102,
+            98,
+            95,
+            99,
+            103,
+            107,
+            110,
+            112,
+        ]
+    )
+    rsi_bullish = _series(
+        [
+            55,
+            52,
+            48,
+            42,
+            35,
+            28,
+            36,
+            44,
+            52,
+            58,
+            53,
+            47,
+            41,
+            37,
+            35,
+            34,
+            42,
+            49,
+            55,
+            60,
+            62,
+        ]
+    )
+
+    assert stock_signals.detect_bullish_rsi_divergence(prices, rsi_bullish, left=3, right=3)
+
+    rsi_not_bullish = rsi_bullish.copy()
+    rsi_not_bullish.iloc[15] = 20.0
+    assert not stock_signals.detect_bullish_rsi_divergence(prices, rsi_not_bullish, left=3, right=3)
+
+
 def test_compute_stock_signal_row_insufficient_data() -> None:
     closes = _series([100.0 + i for i in range(150)])
     row = stock_signals.compute_stock_signal_row("TEST", closes)
@@ -130,6 +189,7 @@ def test_compute_stock_signal_row_insufficient_data() -> None:
     assert row["exit_death_cross_50_lt_100"] is False
     assert row["exit_death_cross_50_lt_200"] is False
     assert row["exit_rsi_overbought"] is False
+    assert row["rsi_bullish_divergence"] is False
     assert row["rsi_bearish_divergence"] is False
     assert row["squat_bull_market_precondition"] is False
     assert row["squat_price_dropping"] is False

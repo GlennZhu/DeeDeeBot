@@ -132,8 +132,14 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
             return scanner_bars_by_ticker[ticker].copy()
         return _bars_frame([100.0] * 260)
 
-    def fake_fetch_stock_daily_bars_batch_yfinance(tickers: list[str], start_date: str) -> dict[str, pd.DataFrame]:
-        del start_date
+    def fake_fetch_stock_daily_bars_batch_yfinance(
+        tickers: list[str],
+        start_date: str,
+        *,
+        batch_size: int = 50,
+        pause_seconds: float = 0.0,
+    ) -> dict[str, pd.DataFrame]:
+        del start_date, batch_size, pause_seconds
         out: dict[str, pd.DataFrame] = {}
         for ticker in tickers:
             ticker_key = str(ticker).upper()
@@ -232,6 +238,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "exit_death_cross_50_lt_100",
         "exit_death_cross_50_lt_200",
         "exit_rsi_overbought",
+        "rsi_bullish_divergence",
         "rsi_bearish_divergence",
         "strong_sell_weak_strength",
         "squat_ambush_near_ma100_or_ma200",

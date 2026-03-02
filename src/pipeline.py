@@ -156,6 +156,7 @@ STOCK_TRIGGER_LABELS: dict[str, str] = {
     "exit_death_cross_50_lt_100": "Risk: Death cross (SMA50 < SMA100)",
     "exit_death_cross_50_lt_200": "Risk: Death cross (SMA50 < SMA200)",
     "exit_rsi_overbought": "Risk: RSI14 overbought (> 80)",
+    "rsi_bullish_divergence": "Bullish RSI divergence",
     "rsi_bearish_divergence": "Risk: Bearish RSI divergence",
     "strong_sell_weak_strength": "Strong Sell: Underperforming vs benchmark",
     "squat_ambush_near_ma100_or_ma200": "🟢 Buy-Zone Watch: 2%-3% above MA100/200",
