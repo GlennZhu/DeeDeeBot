@@ -19,13 +19,12 @@ def test_entry_bullish_alignment_true_on_uptrend() -> None:
     assert row["entry_bullish_alignment"] is True
 
 
-def test_exit_price_below_sma50_and_death_crosses() -> None:
+def test_exit_price_below_sma50_and_death_cross_50_lt_200() -> None:
     closes = _series([200.0] * 200 + [100.0] * 60)
     row = stock_signals.compute_stock_signal_row("TEST", closes, latest_price=99.0)
 
     assert row["status"] == "ok"
     assert row["exit_price_below_sma50"] is True
-    assert row["exit_death_cross_50_lt_100"] is True
     assert row["exit_death_cross_50_lt_200"] is True
 
 
@@ -186,7 +185,6 @@ def test_compute_stock_signal_row_insufficient_data() -> None:
     assert row["status"] == "insufficient_data"
     assert row["entry_bullish_alignment"] is False
     assert row["exit_price_below_sma50"] is False
-    assert row["exit_death_cross_50_lt_100"] is False
     assert row["exit_death_cross_50_lt_200"] is False
     assert row["exit_rsi_overbought"] is False
     assert row["rsi_bullish_divergence"] is False

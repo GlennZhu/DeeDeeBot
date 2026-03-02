@@ -153,7 +153,6 @@ NEGATIVE_MACRO_THRESHOLD_IDS: set[str] = {
 STOCK_TRIGGER_LABELS: dict[str, str] = {
     "entry_bullish_alignment": "Entry: Trend alignment (SMA14 > SMA50 > SMA100/200)",
     "exit_price_below_sma50": "Exit: Price Below SMA50",
-    "exit_death_cross_50_lt_100": "Risk: Death cross (SMA50 < SMA100)",
     "exit_death_cross_50_lt_200": "Risk: Death cross (SMA50 < SMA200)",
     "exit_rsi_overbought": "Risk: RSI14 overbought (> 80)",
     "rsi_bullish_divergence": "Bullish RSI divergence",
@@ -167,7 +166,6 @@ STOCK_TRIGGER_LABELS: dict[str, str] = {
 
 NEGATIVE_STOCK_TRIGGER_IDS: set[str] = {
     "exit_price_below_sma50",
-    "exit_death_cross_50_lt_100",
     "exit_death_cross_50_lt_200",
     "exit_rsi_overbought",
     "rsi_bearish_divergence",

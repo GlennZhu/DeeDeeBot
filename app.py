@@ -52,7 +52,6 @@ STATE_COLORS = {
 STOCK_TRIGGER_LABELS = {
     "entry_bullish_alignment": "Entry: Trend Alignment",
     "exit_price_below_sma50": "Exit: Price Below SMA50",
-    "exit_death_cross_50_lt_100": "Risk: Death Cross (50<100)",
     "exit_death_cross_50_lt_200": "Risk: Death Cross (50<200)",
     "exit_rsi_overbought": "Risk: RSI14 Overbought (>80)",
     "rsi_bullish_divergence": "Bullish RSI divergence",
@@ -67,7 +66,6 @@ STOCK_TRIGGER_LABELS = {
 STOCK_TRIGGER_COLORS = {
     "entry_bullish_alignment": "#188038",
     "exit_price_below_sma50": "#b3261e",
-    "exit_death_cross_50_lt_100": "#b3261e",
     "exit_death_cross_50_lt_200": "#b3261e",
     "exit_rsi_overbought": "#b26a00",
     "rsi_bullish_divergence": "#1f6feb",

@@ -44,7 +44,6 @@ For each watched ticker, the pipeline checks:
 
 2. Exit and risk signals:
 - `price < SMA50`
-- `SMA50 < SMA100`
 - `SMA50 < SMA200`
 - `RSI14 > 80`
 
