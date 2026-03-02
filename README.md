@@ -196,6 +196,6 @@ Notifications:
 
 Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only --skip-scanner` to keep watchlist alerts fresh intraday.
 
-Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers`, which scans the full `S&P 500 + Nasdaq 500 proxy + watchlist` scope.
+Workflow `update_stock_scanner_daily.yml` runs once per weekday at fixed UTC time (`10 22 * * 1-5`), with no DST guard. This is `5:10 PM` Eastern during standard time and `6:10 PM` Eastern during daylight time. It executes `python -m src.pipeline --stock-only --scanner-all-tickers`, which scans the full `S&P 500 + Nasdaq 500 proxy + watchlist` scope.
 
 `workflow_dispatch` remains available for both workflows.
