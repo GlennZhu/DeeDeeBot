@@ -18,12 +18,13 @@ STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
 STOCK_UNIVERSE_PATH = DERIVED_DATA_DIR / "stock_universe.csv"
 SCANNER_SIGNALS_PATH = DERIVED_DATA_DIR / "scanner_signals_latest.csv"
 SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
+DEFAULT_STOCK_BENCHMARK = "QQQ"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
-    {"ticker": "GOOG"},
-    {"ticker": "AVGO"},
-    {"ticker": "NVDA"},
-    {"ticker": "MSFT"},
-    {"ticker": "QQQ"},
+    {"ticker": "GOOG", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "AVGO", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "NVDA", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "MSFT", "benchmark": DEFAULT_STOCK_BENCHMARK},
+    {"ticker": "QQQ", "benchmark": DEFAULT_STOCK_BENCHMARK},
 ]
 
 HISTORY_OPTIONS = {
@@ -128,15 +129,24 @@ SCANNER_SIGNAL_FILTER_OPTIONS: list[dict[str, str]] = [
 ]
 
 
-@st.cache_data
-def _load_csv(path: Path, date_columns: list[str]) -> pd.DataFrame:
-    if not path.exists():
-        return pd.DataFrame()
-    frame = pd.read_csv(path)
+@st.cache_data(show_spinner=False)
+def _load_csv_cached(path_str: str, date_columns: tuple[str, ...], file_mtime_ns: int) -> pd.DataFrame:
+    del file_mtime_ns
+    frame = pd.read_csv(path_str)
     for col in date_columns:
         if col in frame.columns:
             frame[col] = pd.to_datetime(frame[col], errors="coerce")
     return frame
+
+
+def _load_csv(path: Path, date_columns: list[str]) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        file_mtime_ns = path.stat().st_mtime_ns
+    except OSError:
+        return pd.DataFrame()
+    return _load_csv_cached(str(path), tuple(date_columns), int(file_mtime_ns))
 
 
 def _load_metric_series(metric_key: str) -> pd.DataFrame:
@@ -342,45 +352,51 @@ def _normalize_watchlist_rows(rows: list[dict[str, object]]) -> list[dict[str, s
     seen: set[str] = set()
     for row in rows:
         ticker = _normalize_ticker(str(row.get("ticker", "")))
+        benchmark = _normalize_ticker(str(row.get("benchmark", DEFAULT_STOCK_BENCHMARK))) or DEFAULT_STOCK_BENCHMARK
         if not ticker or ticker in seen:
             continue
         seen.add(ticker)
-        out.append({"ticker": ticker})
+        out.append({"ticker": ticker, "benchmark": benchmark})
     return out
 
 
 def _write_watchlist(rows: list[dict[str, object]]) -> None:
     STOCK_WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     normalized = _normalize_watchlist_rows(rows)
-    pd.DataFrame(normalized, columns=["ticker"]).to_csv(STOCK_WATCHLIST_PATH, index=False)
+    pd.DataFrame(normalized, columns=["ticker", "benchmark"]).to_csv(STOCK_WATCHLIST_PATH, index=False)
 
 
 def _load_or_initialize_watchlist() -> pd.DataFrame:
     if not STOCK_WATCHLIST_PATH.exists():
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
     try:
         frame = pd.read_csv(STOCK_WATCHLIST_PATH)
     except Exception:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
     if "ticker" not in frame.columns:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
+    if "benchmark" not in frame.columns:
+        frame["benchmark"] = DEFAULT_STOCK_BENCHMARK
     records = frame.to_dict(orient="records")
     normalized = _normalize_watchlist_rows(records)
     if not normalized:
         _write_watchlist(DEFAULT_STOCK_WATCHLIST)
-        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker"])
+        return pd.DataFrame(DEFAULT_STOCK_WATCHLIST, columns=["ticker", "benchmark"])
 
-    normalized_frame = pd.DataFrame(normalized, columns=["ticker"])
-    current_subset = frame[["ticker"]].copy()
+    normalized_frame = pd.DataFrame(normalized, columns=["ticker", "benchmark"])
+    current_subset = frame[["ticker", "benchmark"]].copy()
     current_subset["ticker"] = current_subset["ticker"].map(_normalize_ticker)
+    current_subset["benchmark"] = (
+        current_subset["benchmark"].map(_normalize_ticker).replace("", DEFAULT_STOCK_BENCHMARK)
+    )
 
-    if set(frame.columns) != {"ticker"} or not normalized_frame.equals(current_subset.reset_index(drop=True)):
+    if set(frame.columns) != {"ticker", "benchmark"} or not normalized_frame.equals(current_subset.reset_index(drop=True)):
         _write_watchlist(normalized)
 
     return normalized_frame
@@ -625,7 +641,11 @@ def _render_stock_tab() -> None:
 
         status = str(row.get("status", ""))
         if status and status != "ok":
-            card.caption(f"Status: {status} ({row.get('status_message', '')})")
+            error_type = str(row.get("error_type", "")).strip()
+            error_provider = str(row.get("error_provider", "")).strip()
+            suffix_parts = [part for part in [error_type, error_provider] if part]
+            suffix = f" [{' / '.join(suffix_parts)}]" if suffix_parts else ""
+            card.caption(f"Status: {status}{suffix} ({row.get('status_message', '')})")
 
 
 def _render_scanner_tab() -> None:
@@ -688,8 +708,8 @@ def _render_scanner_tab() -> None:
     metric_cols[3].metric("Watchlist", int(scanner_signals["is_watchlist"].sum()))
 
     filter_cols = st.columns(5)
-    mode = filter_cols[0].selectbox("Mode", ["Triggered Today", "Currently Active"], index=0)
-    only_signal_rows = filter_cols[1].checkbox("Only rows with any signal", value=True)
+    mode = filter_cols[0].selectbox("Mode", ["Triggered Today", "Currently Active"], index=1)
+    only_signal_rows = filter_cols[1].checkbox("Only rows with any signal", value=False)
     include_watchlist_only = filter_cols[2].checkbox("Watchlist only", value=False)
     require_all_signals = filter_cols[3].checkbox("Match all selected", value=False)
     search_term = filter_cols[4].text_input("Search", placeholder="Ticker, exchange, name")
@@ -771,6 +791,10 @@ def _render_scanner_tab() -> None:
         "security_name",
         "signal_summary",
         "status",
+        "status_message",
+        "error_type",
+        "error_provider",
+        "error_retryable",
     ]
     available_columns = [col for col in display_columns if col in filtered.columns]
     st.dataframe(filtered[available_columns], use_container_width=True, hide_index=True)

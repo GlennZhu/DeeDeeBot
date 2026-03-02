@@ -1,13 +1,16 @@
-"""Data fetching utilities for FRED and Stooq."""
+"""Data fetching utilities for FRED and market-data providers."""
 
 from __future__ import annotations
 
 import csv
 import io
+import json
+import os
+import base64
 import time
 from datetime import datetime, timezone
 from typing import Any
-from urllib import request
+from urllib import error, parse, request
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -32,6 +35,40 @@ _OTHER_LISTED_EXCHANGE_MAP = {
     "P": "NYSE Arca",
     "V": "IEX",
     "Z": "BATS",
+}
+
+MARKET_DATA_PROVIDER_AUTO = "auto"
+MARKET_DATA_PROVIDER_PUBLIC = "public"
+MARKET_DATA_PROVIDER_SCHWAB = "schwab"
+SCHWAB_BASE_URL = "https://api.schwabapi.com"
+SCHWAB_OAUTH_TOKEN_PATH = "/v1/oauth/token"
+SCHWAB_PRICEHISTORY_PATH = "/marketdata/v1/pricehistory"
+SCHWAB_QUOTES_PATH = "/marketdata/v1/quotes"
+SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST = 200
+SCHWAB_REQUEST_TIMEOUT_SECONDS = 12
+SCHWAB_YEARS_LOOKBACK = 20
+
+
+class MarketDataError(RuntimeError):
+    """Typed market-data fetch failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str,
+        error_type: str,
+        retryable: bool,
+    ) -> None:
+        super().__init__(message)
+        self.provider = str(provider)
+        self.error_type = str(error_type)
+        self.retryable = bool(retryable)
+
+
+_SCHWAB_TOKEN_CACHE: dict[str, Any] = {
+    "access_token": "",
+    "expires_at_utc": None,
 }
 
 
@@ -150,6 +187,394 @@ def _preferred_yfinance_symbol(raw_symbol: str) -> str:
         if "." not in variant and "/" not in variant:
             return variant
     return variants[0] if variants else raw_symbol.strip().upper()
+
+
+def _market_data_provider() -> str:
+    configured = str(os.getenv("MARKET_DATA_PROVIDER", MARKET_DATA_PROVIDER_AUTO)).strip().lower()
+    if configured in {"stooq", "yfinance", MARKET_DATA_PROVIDER_PUBLIC}:
+        return MARKET_DATA_PROVIDER_PUBLIC
+    if configured == MARKET_DATA_PROVIDER_SCHWAB:
+        return MARKET_DATA_PROVIDER_SCHWAB
+    if configured not in {MARKET_DATA_PROVIDER_AUTO, MARKET_DATA_PROVIDER_PUBLIC, MARKET_DATA_PROVIDER_SCHWAB}:
+        configured = MARKET_DATA_PROVIDER_AUTO
+    if configured == MARKET_DATA_PROVIDER_AUTO:
+        token = str(os.getenv("SCHWAB_ACCESS_TOKEN", "")).strip()
+        if token:
+            return MARKET_DATA_PROVIDER_SCHWAB
+        return MARKET_DATA_PROVIDER_PUBLIC
+    return configured
+
+
+def _schwab_public_fallback_enabled() -> bool:
+    raw = str(os.getenv("SCHWAB_ALLOW_PUBLIC_FALLBACK", "")).strip().lower()
+    if not raw:
+        return False
+    return raw in {"1", "true", "yes", "y", "on"}
+
+
+def _schwab_timeout_seconds() -> int:
+    raw = str(os.getenv("SCHWAB_REQUEST_TIMEOUT_SECONDS", "")).strip()
+    if not raw:
+        return SCHWAB_REQUEST_TIMEOUT_SECONDS
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return SCHWAB_REQUEST_TIMEOUT_SECONDS
+    return max(3, parsed)
+
+
+def _schwab_base_url() -> str:
+    raw = str(os.getenv("SCHWAB_BASE_URL", SCHWAB_BASE_URL)).strip()
+    if not raw:
+        return SCHWAB_BASE_URL
+    return raw.rstrip("/")
+
+
+def _schwab_token_is_fresh() -> bool:
+    access_token = str(_SCHWAB_TOKEN_CACHE.get("access_token", "")).strip()
+    expires_at_utc = _SCHWAB_TOKEN_CACHE.get("expires_at_utc")
+    if not access_token or not isinstance(expires_at_utc, datetime):
+        return False
+    now = datetime.now(timezone.utc)
+    return now < expires_at_utc
+
+
+def _schwab_refresh_access_token() -> str:
+    refresh_token = str(os.getenv("SCHWAB_REFRESH_TOKEN", "")).strip()
+    client_id = str(os.getenv("SCHWAB_CLIENT_ID", "")).strip()
+    client_secret = str(os.getenv("SCHWAB_CLIENT_SECRET", "")).strip()
+    if not refresh_token or not client_id or not client_secret:
+        raise MarketDataError(
+            "SCHWAB_ACCESS_TOKEN is missing and refresh credentials are not fully configured.",
+            provider="schwab",
+            error_type="auth_error",
+            retryable=False,
+        )
+
+    token_url = f"{_schwab_base_url()}{SCHWAB_OAUTH_TOKEN_PATH}"
+    payload = parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        }
+    ).encode("utf-8")
+    basic_auth = f"{client_id}:{client_secret}".encode("utf-8")
+    auth_header = base64.b64encode(basic_auth).decode("ascii")
+    req = request.Request(
+        token_url,
+        headers={
+            "Authorization": f"Basic {auth_header}",
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": UNIVERSE_FETCH_USER_AGENT,
+        },
+        data=payload,
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=_schwab_timeout_seconds()) as response:
+            raw_body = response.read().decode("utf-8", errors="replace")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        raise MarketDataError(
+            f"Failed to refresh Schwab access token (HTTP {exc.code}): {body or exc.reason}",
+            provider="schwab",
+            error_type="auth_error",
+            retryable=False,
+        ) from exc
+    except Exception as exc:
+        raise MarketDataError(
+            f"Failed to refresh Schwab access token: {exc}",
+            provider="schwab",
+            error_type="auth_error",
+            retryable=False,
+        ) from exc
+
+    try:
+        parsed = json.loads(raw_body)
+    except Exception as exc:
+        raise MarketDataError(
+            f"Schwab token refresh returned invalid JSON: {exc}",
+            provider="schwab",
+            error_type="auth_error",
+            retryable=False,
+        ) from exc
+
+    access_token = str(parsed.get("access_token", "")).strip()
+    expires_in = pd.to_numeric(parsed.get("expires_in"), errors="coerce")
+    if not access_token or pd.isna(expires_in):
+        raise MarketDataError(
+            f"Schwab token refresh response missing required fields: {parsed}",
+            provider="schwab",
+            error_type="auth_error",
+            retryable=False,
+        )
+
+    ttl_seconds = max(60, int(float(expires_in)))
+    _SCHWAB_TOKEN_CACHE["access_token"] = access_token
+    _SCHWAB_TOKEN_CACHE["expires_at_utc"] = datetime.now(timezone.utc) + pd.Timedelta(seconds=ttl_seconds - 30)
+    return access_token
+
+
+def _schwab_access_token() -> str:
+    env_access_token = str(os.getenv("SCHWAB_ACCESS_TOKEN", "")).strip()
+    if env_access_token:
+        return env_access_token
+    if _schwab_token_is_fresh():
+        return str(_SCHWAB_TOKEN_CACHE.get("access_token", "")).strip()
+    return _schwab_refresh_access_token()
+
+
+def _schwab_raise_http_error(exc: error.HTTPError, *, endpoint: str, symbol: str = "") -> None:
+    status = int(getattr(exc, "code", 0) or 0)
+    body = ""
+    try:
+        body = exc.read().decode("utf-8", errors="replace")
+    except Exception:
+        body = ""
+
+    provider = "schwab"
+    symbol_suffix = f" symbol={symbol}" if symbol else ""
+    details = body or str(exc.reason) or str(exc)
+    if status == 429:
+        raise MarketDataError(
+            f"Schwab rate limited request endpoint={endpoint}{symbol_suffix}: {details}",
+            provider=provider,
+            error_type="rate_limited",
+            retryable=True,
+        ) from exc
+    if status in {401, 403}:
+        raise MarketDataError(
+            f"Schwab auth rejected request endpoint={endpoint}{symbol_suffix}: {details}",
+            provider=provider,
+            error_type="auth_error",
+            retryable=False,
+        ) from exc
+    if status == 404:
+        raise MarketDataError(
+            f"Schwab symbol not found endpoint={endpoint}{symbol_suffix}: {details}",
+            provider=provider,
+            error_type="symbol_not_found",
+            retryable=False,
+        ) from exc
+    if status in {408, 500, 502, 503, 504}:
+        raise MarketDataError(
+            f"Schwab upstream unavailable endpoint={endpoint}{symbol_suffix}: {details}",
+            provider=provider,
+            error_type="upstream_unreachable",
+            retryable=True,
+        ) from exc
+    raise MarketDataError(
+        f"Schwab API error endpoint={endpoint}{symbol_suffix} HTTP {status}: {details}",
+        provider=provider,
+        error_type="upstream_api_error",
+        retryable=status >= 500,
+    ) from exc
+
+
+def _schwab_get_json(path: str, query: dict[str, Any]) -> Any:
+    token = _schwab_access_token()
+    query_items = {k: v for k, v in query.items() if v is not None and str(v) != ""}
+    encoded_query = parse.urlencode(query_items, doseq=True)
+    url = f"{_schwab_base_url()}{path}"
+    if encoded_query:
+        url = f"{url}?{encoded_query}"
+
+    req = request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "User-Agent": UNIVERSE_FETCH_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with request.urlopen(req, timeout=_schwab_timeout_seconds()) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+    except error.HTTPError as exc:
+        _schwab_raise_http_error(exc, endpoint=path)
+    except error.URLError as exc:
+        raise MarketDataError(
+            f"Schwab upstream unreachable endpoint={path}: {exc}",
+            provider="schwab",
+            error_type="upstream_unreachable",
+            retryable=True,
+        ) from exc
+    except TimeoutError as exc:
+        raise MarketDataError(
+            f"Schwab request timed out endpoint={path}: {exc}",
+            provider="schwab",
+            error_type="upstream_unreachable",
+            retryable=True,
+        ) from exc
+
+    try:
+        return json.loads(payload) if payload.strip() else {}
+    except Exception as exc:
+        raise MarketDataError(
+            f"Schwab returned invalid JSON for endpoint={path}: {exc}",
+            provider="schwab",
+            error_type="upstream_invalid_response",
+            retryable=True,
+        ) from exc
+
+
+def _schwab_candles_to_ohlc_frame(candles: Any, symbol: str) -> pd.DataFrame:
+    if not isinstance(candles, list) or not candles:
+        return pd.DataFrame()
+    frame = pd.DataFrame(candles)
+    if frame.empty or "datetime" not in frame.columns:
+        return pd.DataFrame()
+
+    frame = frame.rename(
+        columns={
+            "open": "Open",
+            "high": "High",
+            "low": "Low",
+            "close": "Close",
+            "volume": "Volume",
+        }
+    )
+    frame["datetime"] = pd.to_datetime(frame["datetime"], unit="ms", errors="coerce", utc=True)
+    frame = frame[frame["datetime"].notna()].copy()
+    if frame.empty:
+        return pd.DataFrame()
+    frame["datetime"] = frame["datetime"].dt.tz_localize(None)
+    frame = frame.set_index("datetime").sort_index()
+    keep_cols = [col for col in ["Open", "High", "Low", "Close", "Volume"] if col in frame.columns]
+    frame = frame[keep_cols].copy()
+    for col in keep_cols:
+        frame[col] = pd.to_numeric(frame[col], errors="coerce")
+    frame = frame[frame["Close"].notna()] if "Close" in frame.columns else frame
+    frame.attrs["source"] = f"SCHWAB:{symbol}"
+    return frame
+
+
+def _fetch_schwab_daily_bars(raw_symbol: str, start_date: str) -> pd.DataFrame:
+    symbol = _preferred_yfinance_symbol(raw_symbol)
+    start_ts = pd.Timestamp(start_date)
+    if start_ts.tzinfo is None:
+        start_ts = start_ts.tz_localize("UTC")
+    else:
+        start_ts = start_ts.tz_convert("UTC")
+    now_ts = pd.Timestamp.utcnow()
+    if now_ts.tzinfo is None:
+        now_ts = now_ts.tz_localize("UTC")
+    else:
+        now_ts = now_ts.tz_convert("UTC")
+    query = {
+        "symbol": symbol,
+        "periodType": "year",
+        "period": SCHWAB_YEARS_LOOKBACK,
+        "frequencyType": "daily",
+        "frequency": 1,
+        "needExtendedHoursData": "false",
+        "needPreviousClose": "false",
+        "startDate": int(start_ts.timestamp() * 1000),
+        "endDate": int(now_ts.timestamp() * 1000),
+    }
+    payload = _schwab_get_json(SCHWAB_PRICEHISTORY_PATH, query)
+    candles = payload.get("candles", []) if isinstance(payload, dict) else []
+    frame = _schwab_candles_to_ohlc_frame(candles, symbol)
+    if frame.empty:
+        raise MarketDataError(
+            f"No daily OHLC candles returned from Schwab for {symbol}.",
+            provider="schwab",
+            error_type="symbol_not_found",
+            retryable=False,
+        )
+    return frame
+
+
+def _fetch_schwab_intraday_quotes_batch(tickers: list[str]) -> dict[str, dict[str, Any]]:
+    results: dict[str, dict[str, Any]] = {}
+    normalized_tickers = [str(ticker).strip().upper() for ticker in tickers if str(ticker).strip()]
+    if not normalized_tickers:
+        return results
+
+    max_symbols_raw = str(os.getenv("SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST", "")).strip()
+    try:
+        max_symbols = int(max_symbols_raw) if max_symbols_raw else SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST
+    except ValueError:
+        max_symbols = SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST
+    max_symbols = max(1, min(500, max_symbols))
+
+    for offset in range(0, len(normalized_tickers), max_symbols):
+        batch = normalized_tickers[offset : offset + max_symbols]
+        payload = _schwab_get_json(
+            SCHWAB_QUOTES_PATH,
+            {
+                "symbols": ",".join(batch),
+                "fields": "quote",
+                "indicative": "false",
+            },
+        )
+        if not isinstance(payload, dict):
+            continue
+        fetched_at_utc = datetime.now(timezone.utc)
+        for symbol in batch:
+            raw_entry = payload.get(symbol)
+            if raw_entry is None:
+                raw_entry = payload.get(symbol.upper())
+            if raw_entry is None:
+                raw_entry = payload.get(symbol.lower())
+            if not isinstance(raw_entry, dict):
+                continue
+            quote_payload = raw_entry.get("quote") if isinstance(raw_entry.get("quote"), dict) else raw_entry
+            if not isinstance(quote_payload, dict):
+                continue
+
+            price_candidates = [
+                quote_payload.get("lastPrice"),
+                quote_payload.get("mark"),
+                quote_payload.get("closePrice"),
+                quote_payload.get("bidPrice"),
+            ]
+            price_value: float | None = None
+            for candidate in price_candidates:
+                parsed = pd.to_numeric(candidate, errors="coerce")
+                if pd.notna(parsed):
+                    price_value = float(parsed)
+                    break
+            if price_value is None or price_value <= 0:
+                continue
+
+            previous_close_raw = quote_payload.get("closePrice")
+            previous_close_num = pd.to_numeric(previous_close_raw, errors="coerce")
+            previous_close = float(previous_close_num) if pd.notna(previous_close_num) else None
+            day_change = pd.to_numeric(quote_payload.get("netChange"), errors="coerce")
+            day_change_pct = pd.to_numeric(quote_payload.get("netPercentChangeInDouble"), errors="coerce")
+            day_change_value = float(day_change) if pd.notna(day_change) else None
+            day_change_pct_value = (float(day_change_pct) / 100.0) if pd.notna(day_change_pct) else None
+            if day_change_value is None and previous_close not in (None, 0):
+                day_change_value = float(price_value) - float(previous_close)
+            if day_change_pct_value is None and previous_close not in (None, 0):
+                day_change_pct_value = (float(price_value) - float(previous_close)) / float(previous_close)
+
+            quote_time_raw = quote_payload.get("quoteTime") or quote_payload.get("tradeTime")
+            quote_timestamp_utc: str | None = None
+            quote_age_seconds: int | None = None
+            quote_time_num = pd.to_numeric(quote_time_raw, errors="coerce")
+            if pd.notna(quote_time_num):
+                try:
+                    quote_ts = pd.to_datetime(int(float(quote_time_num)), unit="ms", utc=True)
+                    quote_timestamp_utc = quote_ts.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    quote_age_seconds = max(0, int((fetched_at_utc - quote_ts.to_pydatetime()).total_seconds()))
+                except Exception:
+                    quote_timestamp_utc = None
+                    quote_age_seconds = None
+
+            results[symbol] = {
+                "price": float(price_value),
+                "previous_close": previous_close,
+                "day_change": day_change_value,
+                "day_change_pct": day_change_pct_value,
+                "quote_timestamp_utc": quote_timestamp_utc,
+                "quote_age_seconds": quote_age_seconds,
+                "source": f"SCHWAB_QUOTES:{symbol}",
+            }
+    return results
 
 
 def _parse_stooq_quote_timestamp(
@@ -367,19 +792,7 @@ def _fetch_yfinance_daily_bars(raw_symbol: str, start_date: str) -> pd.DataFrame
     return None
 
 
-def fetch_stock_daily_bars_batch_yfinance(
-    tickers: list[str],
-    start_date: str,
-    *,
-    batch_size: int = 100,
-    pause_seconds: float = 0.4,
-) -> dict[str, pd.DataFrame]:
-    """Fetch daily OHLCV history for many tickers from Yahoo in batches."""
-    if yf is None:
-        return {}
-    if not tickers:
-        return {}
-
+def _normalize_ticker_batch(tickers: list[str]) -> list[str]:
     normalized_tickers: list[str] = []
     seen: set[str] = set()
     for raw_ticker in tickers:
@@ -388,6 +801,82 @@ def fetch_stock_daily_bars_batch_yfinance(
             continue
         seen.add(ticker)
         normalized_tickers.append(ticker)
+    return normalized_tickers
+
+
+def _fetch_schwab_daily_bars_batch(
+    tickers: list[str],
+    start_date: str,
+    *,
+    batch_size: int = 100,
+    pause_seconds: float = 0.4,
+) -> dict[str, pd.DataFrame]:
+    results: dict[str, pd.DataFrame] = {}
+    normalized_tickers = _normalize_ticker_batch(tickers)
+    if not normalized_tickers:
+        return results
+
+    step = max(1, int(batch_size))
+    consecutive_rate_limited_batches = 0
+    for offset in range(0, len(normalized_tickers), step):
+        batch = normalized_tickers[offset : offset + step]
+        batch_rate_limited = 0
+        for ticker in batch:
+            try:
+                results[ticker] = _fetch_schwab_daily_bars(ticker, start_date)
+            except MarketDataError as exc:
+                if exc.error_type == "auth_error":
+                    raise
+                if exc.error_type == "rate_limited":
+                    batch_rate_limited += 1
+                continue
+            except Exception:
+                continue
+
+        if batch and batch_rate_limited == len(batch):
+            consecutive_rate_limited_batches += 1
+        else:
+            consecutive_rate_limited_batches = 0
+
+        if consecutive_rate_limited_batches >= 2:
+            print(
+                "Warning: Schwab daily OHLC batch prefetch is repeatedly rate-limited; "
+                "stopping prefetch early to limit churn."
+            )
+            break
+
+        if pause_seconds > 0 and (offset + step) < len(normalized_tickers):
+            time.sleep(float(pause_seconds))
+    return results
+
+
+def fetch_stock_daily_bars_batch_yfinance(
+    tickers: list[str],
+    start_date: str,
+    *,
+    batch_size: int = 100,
+    pause_seconds: float = 0.4,
+) -> dict[str, pd.DataFrame]:
+    """Fetch daily OHLCV history for many tickers from configured market-data provider."""
+    provider = _market_data_provider()
+    if provider == MARKET_DATA_PROVIDER_SCHWAB:
+        try:
+            return _fetch_schwab_daily_bars_batch(
+                tickers,
+                start_date,
+                batch_size=batch_size,
+                pause_seconds=pause_seconds,
+            )
+        except MarketDataError:
+            if not _schwab_public_fallback_enabled():
+                raise
+
+    if yf is None:
+        return {}
+    if not tickers:
+        return {}
+
+    normalized_tickers = _normalize_ticker_batch(tickers)
     if not normalized_tickers:
         return {}
 
@@ -395,6 +884,7 @@ def fetch_stock_daily_bars_batch_yfinance(
     symbol_map = {ticker: _preferred_yfinance_symbol(ticker) for ticker in normalized_tickers}
     items = list(symbol_map.items())
     step = max(1, int(batch_size))
+    consecutive_empty_large_batches = 0
 
     for offset in range(0, len(items), step):
         batch_items = items[offset : offset + step]
@@ -411,12 +901,25 @@ def fetch_stock_daily_bars_batch_yfinance(
         except Exception:
             frame = pd.DataFrame()
 
+        batch_hits = 0
         for ticker, yahoo_symbol in batch_items:
             raw_bars = _extract_yfinance_batch_bars_frame(frame, yahoo_symbol)
             normalized = _normalize_ohlc_frame(raw_bars, f"YFINANCE:{yahoo_symbol}")
             if normalized.empty:
                 continue
             results[ticker] = normalized
+            batch_hits += 1
+
+        if batch_hits == 0 and len(batch_items) >= 25:
+            consecutive_empty_large_batches += 1
+        else:
+            consecutive_empty_large_batches = 0
+        if consecutive_empty_large_batches >= 2:
+            print(
+                "Warning: yfinance daily OHLC batch prefetch returned empty results for consecutive large batches; "
+                "stopping early to avoid rate-limit churn."
+            )
+            break
 
         if pause_seconds > 0 and (offset + step) < len(items):
             time.sleep(float(pause_seconds))
@@ -425,10 +928,18 @@ def fetch_stock_daily_bars_batch_yfinance(
 
 
 def fetch_stock_daily_bars(ticker: str, start_date: str) -> pd.DataFrame:
-    """Fetch daily OHLCV bars for a stock ticker from Stooq, with Yahoo fallback."""
+    """Fetch daily OHLCV bars for a stock ticker from configured market-data provider."""
     raw_symbol = str(ticker).strip().upper()
     if not raw_symbol:
         raise RuntimeError("Ticker cannot be empty.")
+
+    provider = _market_data_provider()
+    if provider == MARKET_DATA_PROVIDER_SCHWAB:
+        try:
+            return _fetch_schwab_daily_bars(raw_symbol, start_date)
+        except MarketDataError:
+            if not _schwab_public_fallback_enabled():
+                raise
 
     last_error: Exception | None = None
     for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
@@ -491,6 +1002,32 @@ def _extract_yfinance_batch_close_series(frame: pd.DataFrame, yahoo_symbol: str)
     return _extract_close_series(frame)
 
 
+def _fetch_schwab_daily_history_batch(
+    tickers: list[str],
+    start_date: str,
+    *,
+    batch_size: int = 100,
+    pause_seconds: float = 0.4,
+) -> dict[str, pd.Series]:
+    bars_by_ticker = _fetch_schwab_daily_bars_batch(
+        tickers,
+        start_date,
+        batch_size=batch_size,
+        pause_seconds=pause_seconds,
+    )
+    out: dict[str, pd.Series] = {}
+    for ticker, bars in bars_by_ticker.items():
+        close = _extract_close_series(bars)
+        if close.empty:
+            continue
+        normalized = _normalize_series(close, ticker)
+        if normalized.empty:
+            continue
+        normalized.attrs["source"] = str(getattr(bars, "attrs", {}).get("source", f"SCHWAB:{ticker}"))
+        out[ticker] = normalized
+    return out
+
+
 def fetch_stock_daily_history_batch_yfinance(
     tickers: list[str],
     start_date: str,
@@ -498,23 +1035,29 @@ def fetch_stock_daily_history_batch_yfinance(
     batch_size: int = 100,
     pause_seconds: float = 0.4,
 ) -> dict[str, pd.Series]:
-    """Fetch daily close history for many tickers from Yahoo in batches.
+    """Fetch daily close history for many tickers from configured market-data provider.
 
     Returns only successful ticker series.
     """
+    provider = _market_data_provider()
+    if provider == MARKET_DATA_PROVIDER_SCHWAB:
+        try:
+            return _fetch_schwab_daily_history_batch(
+                tickers,
+                start_date,
+                batch_size=batch_size,
+                pause_seconds=pause_seconds,
+            )
+        except MarketDataError:
+            if not _schwab_public_fallback_enabled():
+                raise
+
     if yf is None:
         return {}
     if not tickers:
         return {}
 
-    normalized_tickers = []
-    seen: set[str] = set()
-    for raw_ticker in tickers:
-        ticker = str(raw_ticker).strip().upper()
-        if not ticker or ticker in seen:
-            continue
-        seen.add(ticker)
-        normalized_tickers.append(ticker)
+    normalized_tickers = _normalize_ticker_batch(tickers)
 
     if not normalized_tickers:
         return {}
@@ -523,6 +1066,7 @@ def fetch_stock_daily_history_batch_yfinance(
     symbol_map = {ticker: _preferred_yfinance_symbol(ticker) for ticker in normalized_tickers}
     items = list(symbol_map.items())
     step = max(1, int(batch_size))
+    consecutive_empty_large_batches = 0
 
     for offset in range(0, len(items), step):
         batch_items = items[offset : offset + step]
@@ -539,6 +1083,7 @@ def fetch_stock_daily_history_batch_yfinance(
         except Exception:
             frame = pd.DataFrame()
 
+        batch_hits = 0
         for ticker, yahoo_symbol in batch_items:
             close = _extract_yfinance_batch_close_series(frame, yahoo_symbol)
             if close.empty:
@@ -548,6 +1093,18 @@ def fetch_stock_daily_history_batch_yfinance(
                 continue
             normalized.attrs["source"] = f"YFINANCE:{yahoo_symbol}"
             results[ticker] = normalized
+            batch_hits += 1
+
+        if batch_hits == 0 and len(batch_items) >= 25:
+            consecutive_empty_large_batches += 1
+        else:
+            consecutive_empty_large_batches = 0
+        if consecutive_empty_large_batches >= 2:
+            print(
+                "Warning: yfinance daily history batch prefetch returned empty results for consecutive large batches; "
+                "stopping early to avoid rate-limit churn."
+            )
+            break
 
         if pause_seconds > 0 and (offset + step) < len(items):
             time.sleep(float(pause_seconds))
@@ -564,10 +1121,36 @@ def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
 
 
 def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
-    """Fetch daily close history for a stock ticker from Stooq, with Yahoo fallback."""
+    """Fetch daily close history for a stock ticker from configured market-data provider."""
     raw_symbol = str(ticker).strip().upper()
     if not raw_symbol:
         raise RuntimeError("Ticker cannot be empty.")
+
+    provider = _market_data_provider()
+    if provider == MARKET_DATA_PROVIDER_SCHWAB:
+        try:
+            bars = _fetch_schwab_daily_bars(raw_symbol, start_date)
+            close = _extract_close_series(bars)
+            if close.empty:
+                raise MarketDataError(
+                    f"No daily close returned from Schwab for {raw_symbol}.",
+                    provider="schwab",
+                    error_type="symbol_not_found",
+                    retryable=False,
+                )
+            normalized = _normalize_series(close, raw_symbol)
+            if normalized.empty:
+                raise MarketDataError(
+                    f"Schwab returned empty normalized close series for {raw_symbol}.",
+                    provider="schwab",
+                    error_type="symbol_not_found",
+                    retryable=False,
+                )
+            normalized.attrs["source"] = str(getattr(bars, "attrs", {}).get("source", f"SCHWAB:{raw_symbol}"))
+            return normalized
+        except MarketDataError:
+            if not _schwab_public_fallback_enabled():
+                raise
 
     last_error: Exception | None = None
     for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
@@ -597,12 +1180,7 @@ def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
     raise RuntimeError(f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}.")
 
 
-def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
-    """Fetch latest intraday quote details from Stooq quote endpoint, with Yahoo fallback."""
-    raw_symbol = str(ticker).strip().upper()
-    if not raw_symbol:
-        return None
-
+def _fetch_public_intraday_quote(raw_symbol: str) -> dict[str, Any] | None:
     for stooq_symbol in _stooq_symbol_candidates(raw_symbol):
         quote_symbol = stooq_symbol.lower()
         # m3 adds both absolute and percent daily change values.
@@ -706,8 +1284,47 @@ def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
                 "quote_age_seconds": None,
                 "source": f"YFINANCE_INTRADAY:{yahoo_symbol}",
             }
-
     return None
+
+
+def fetch_stock_intraday_quotes_batch(tickers: list[str]) -> dict[str, dict[str, Any]]:
+    provider = _market_data_provider()
+    normalized_tickers = _normalize_ticker_batch(tickers)
+    if not normalized_tickers:
+        return {}
+
+    if provider == MARKET_DATA_PROVIDER_SCHWAB:
+        try:
+            return _fetch_schwab_intraday_quotes_batch(normalized_tickers)
+        except MarketDataError:
+            if not _schwab_public_fallback_enabled():
+                raise
+
+    out: dict[str, dict[str, Any]] = {}
+    for ticker in normalized_tickers:
+        quote = _fetch_public_intraday_quote(ticker)
+        if quote is not None:
+            out[ticker] = quote
+    return out
+
+
+def fetch_stock_intraday_quote(ticker: str) -> dict[str, Any] | None:
+    """Fetch latest intraday quote details from configured market-data provider."""
+    raw_symbol = str(ticker).strip().upper()
+    if not raw_symbol:
+        return None
+
+    provider = _market_data_provider()
+    if provider == MARKET_DATA_PROVIDER_SCHWAB:
+        try:
+            batched = _fetch_schwab_intraday_quotes_batch([raw_symbol])
+            quote = batched.get(raw_symbol)
+            if quote is not None:
+                return quote
+        except MarketDataError:
+            if not _schwab_public_fallback_enabled():
+                raise
+    return _fetch_public_intraday_quote(raw_symbol)
 
 
 def fetch_stock_intraday_latest(ticker: str) -> float | None:

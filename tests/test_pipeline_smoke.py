@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from src import pipeline
 from src.stock_signals import STOCK_TRIGGER_COLUMNS
@@ -312,6 +313,232 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         }.issubset(set(scanner_rows["signal_id"].astype(str).tolist()))
 
 
+def test_compute_scanner_signals_surfaces_fetch_error_when_live_fetch_is_unavailable(monkeypatch) -> None:
+    now_iso = "2026-02-11T00:00:00Z"
+    selected_universe = pd.DataFrame(
+        [
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ Global Select",
+                "is_etf": False,
+                "universe_source": "TEST_UNIVERSE",
+                "is_watchlist": False,
+                "last_refreshed_utc": now_iso,
+            }
+        ]
+    )
+    previous_scanner = pd.DataFrame(
+        [
+            {
+                "ticker": "AAPL",
+                "security_name": "Apple Inc.",
+                "exchange": "NASDAQ Global Select",
+                "universe_source": "TEST_UNIVERSE",
+                "is_watchlist": False,
+                "is_etf": False,
+                "as_of_date": "2026-02-10",
+                "price": 198.1,
+                "open": 197.0,
+                "sma14": 190.0,
+                "sma50": 185.0,
+                "sma100": 180.0,
+                "sma200": 170.0,
+                "gap_to_sma100_pct": 0.10,
+                "gap_to_sma200_pct": 0.16,
+                "bullish_alignment_active": True,
+                "bullish_alignment_triggered_today": False,
+                "recovery_close_cross_sma50_today": False,
+                "recovery_three_bullish_candles_today": False,
+                "recovery_momentum_triggered_today": False,
+                "ambush_trend_bullish_active": True,
+                "ambush_near_ma100_active": False,
+                "ambush_near_ma200_active": False,
+                "ambush_squat_active": False,
+                "ambush_squat_triggered_today": False,
+                "source": "TEST:AAPL",
+                "stale_days": 1,
+                "status": "ok",
+                "status_message": "previous ok",
+                "last_updated_utc": "2026-02-10T23:00:00Z",
+            }
+        ]
+    )
+
+    monkeypatch.setattr(pipeline, "fetch_stock_daily_bars_batch_yfinance", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_stock_daily_bars",
+        lambda ticker, start_date: (_ for _ in ()).throw(RuntimeError(f"fetch unavailable for {ticker}")),
+    )
+
+    out = pipeline._compute_scanner_signals(
+        selected_universe=selected_universe,
+        watchlist=pd.DataFrame(columns=["ticker", "benchmark"]),
+        thesis_frame=pd.DataFrame(columns=pipeline.SCANNER_THESIS_COLUMNS),
+        start_date="2025-01-01",
+        now_iso=now_iso,
+        previous_scanner_signals=previous_scanner,
+        scanner_workers=1,
+        scanner_daily_requests_per_second=1.0,
+        scanner_progress_log_every=1,
+    )
+
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["ticker"] == "AAPL"
+    assert row["status"] == "fetch_error"
+    assert row["as_of_date"] == ""
+    assert pd.isna(row["price"])
+    assert not bool(row["bullish_alignment_active"])
+    assert "Failed to fetch daily OHLC history:" in str(row["status_message"])
+    assert row["error_type"] in {"fetch_error", "upstream_unreachable", "symbol_not_found", "rate_limited"}
+    assert isinstance(bool(row["error_retryable"]), bool)
+    assert row["last_updated_utc"] == now_iso
+
+
+def test_load_or_initialize_scanner_thesis_coerces_nan_text_to_empty(tmp_path: Path) -> None:
+    thesis_path = tmp_path / "scanner_thesis_tags.csv"
+    pd.DataFrame(
+        [
+            {"ticker": "AAPL", "pain_point": pd.NA, "solution": float("nan"), "conviction": 1.2},
+            {"ticker": "MSFT", "pain_point": "cost", "solution": pd.NA, "conviction": pd.NA},
+        ]
+    ).to_csv(thesis_path, index=False)
+    watchlist = pd.DataFrame([{"ticker": "AAPL", "benchmark": "QQQ"}])
+
+    out = pipeline._load_or_initialize_scanner_thesis(thesis_path, watchlist)
+    by_ticker = {row["ticker"]: row for _, row in out.iterrows()}
+
+    assert by_ticker["AAPL"]["pain_point"] == ""
+    assert by_ticker["AAPL"]["solution"] == ""
+    assert by_ticker["MSFT"]["pain_point"] == "cost"
+    assert by_ticker["MSFT"]["solution"] == ""
+
+
+def test_compute_watchlist_signals_surfaces_fetch_error_when_live_fetch_is_unavailable(monkeypatch) -> None:
+    now_iso = "2026-02-11T00:00:00Z"
+    watchlist = pd.DataFrame([{"ticker": "AAPL", "benchmark": "QQQ"}])
+    previous_stock = pd.DataFrame(
+        [
+            {
+                "ticker": "AAPL",
+                "benchmark_ticker": "QQQ",
+                "as_of_date": "2026-02-10",
+                "price": 199.4,
+                "sma14": 190.0,
+                "sma50": 185.0,
+                "sma100": 180.0,
+                "sma200": 170.0,
+                "rsi14": 55.0,
+                "day_change": 1.2,
+                "day_change_pct": 0.006,
+                "entry_bullish_alignment": True,
+                "exit_price_below_sma50": False,
+                "exit_death_cross_50_lt_200": False,
+                "exit_rsi_overbought": False,
+                "rsi_bearish_divergence": False,
+                "strong_sell_weak_strength": False,
+                "squat_ambush_near_ma100_or_ma200": False,
+                "squat_dca_below_ma100": False,
+                "squat_last_stand_ma200": False,
+                "squat_breakdown_below_ma200": False,
+                "source": "TEST:AAPL",
+                "stale_days": 1,
+                "status": "ok",
+                "status_message": "previous ok",
+                "last_updated_utc": "2026-02-10T23:00:00Z",
+            }
+        ]
+    )
+
+    monkeypatch.setattr(pipeline, "fetch_stock_daily_history_batch_yfinance", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_stock_daily_history",
+        lambda ticker, start_date: (_ for _ in ()).throw(RuntimeError(f"fetch unavailable for {ticker}")),
+    )
+    monkeypatch.setattr(pipeline, "fetch_stock_intraday_quote", lambda ticker: None)
+
+    out = pipeline._compute_watchlist_signals(
+        watchlist=watchlist,
+        start_date="2025-01-01",
+        now_iso=now_iso,
+        previous_stock_signals=previous_stock,
+    )
+
+    assert len(out) == 1
+    row = out.iloc[0]
+    assert row["ticker"] == "AAPL"
+    assert row["status"] == "fetch_error"
+    assert row["as_of_date"] == ""
+    assert pd.isna(row["price"])
+    assert not bool(row["entry_bullish_alignment"])
+    assert "Failed to fetch daily history:" in str(row["status_message"])
+    assert row["error_type"] in {"fetch_error", "upstream_unreachable", "symbol_not_found", "rate_limited"}
+    assert isinstance(bool(row["error_retryable"]), bool)
+    assert row["last_updated_utc"] == now_iso
+
+
+def test_compute_scanner_signals_triggers_circuit_breaker_on_repeated_rate_limits(monkeypatch) -> None:
+    now_iso = "2026-02-11T00:00:00Z"
+    selected_universe = pd.DataFrame(
+        [
+            {
+                "ticker": "AAA",
+                "security_name": "AAA Inc.",
+                "exchange": "NASDAQ",
+                "universe_source": "TEST_UNIVERSE",
+                "is_watchlist": False,
+                "is_etf": False,
+            },
+            {
+                "ticker": "AAB",
+                "security_name": "AAB Inc.",
+                "exchange": "NASDAQ",
+                "universe_source": "TEST_UNIVERSE",
+                "is_watchlist": False,
+                "is_etf": False,
+            },
+            {
+                "ticker": "AAC",
+                "security_name": "AAC Inc.",
+                "exchange": "NASDAQ",
+                "universe_source": "TEST_UNIVERSE",
+                "is_watchlist": False,
+                "is_etf": False,
+            },
+        ]
+    )
+
+    monkeypatch.setenv("SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE", "0.5")
+    monkeypatch.setenv("SCANNER_CIRCUIT_PROBE_COUNT", "2")
+    monkeypatch.setenv("SCANNER_FETCH_MAX_ATTEMPTS", "1")
+    monkeypatch.setenv("SCANNER_FETCH_BACKOFF_SECONDS", "0.0")
+    monkeypatch.setattr(pipeline, "fetch_stock_daily_bars_batch_yfinance", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_stock_daily_bars",
+        lambda ticker, start_date: (_ for _ in ()).throw(RuntimeError("Too Many Requests from provider")),
+    )
+
+    out = pipeline._compute_scanner_signals(
+        selected_universe=selected_universe,
+        watchlist=pd.DataFrame(columns=["ticker", "benchmark"]),
+        thesis_frame=pd.DataFrame(columns=pipeline.SCANNER_THESIS_COLUMNS),
+        start_date="2025-01-01",
+        now_iso=now_iso,
+        scanner_workers=1,
+        scanner_daily_requests_per_second=1.0,
+        scanner_progress_log_every=1,
+    )
+
+    assert len(out) == 3
+    assert set(out["status"].tolist()) == {"fetch_error"}
+    assert (out["error_type"] == "rate_limited").all()
+    assert out["status_message"].astype(str).str.contains("Circuit breaker").any()
+
+
 def test_detect_new_threshold_events_flags_only_new_trigger() -> None:
     previous = pd.DataFrame(
         [
@@ -500,6 +727,49 @@ def test_select_scanner_universe_cap_applies_beyond_watchlist_not_total() -> Non
     # Both watchlist names stay pinned, plus 1 extra non-watchlist row.
     assert {"W1", "W2"}.issubset(set(selected["ticker"].tolist()))
     assert len(selected) == 3
+
+
+def test_apply_scanner_shard_partitions_universe_deterministically() -> None:
+    universe = pd.DataFrame(
+        [
+            {
+                "ticker": ticker,
+                "security_name": f"Name {ticker}",
+                "exchange": "NASDAQ",
+                "is_etf": False,
+                "universe_source": "test",
+                "is_watchlist": False,
+                "last_refreshed_utc": "2026-02-02T00:00:00Z",
+            }
+            for ticker in ["AAA", "AAB", "AAC", "AAD", "AAE", "AAF", "AAG"]
+        ]
+    )
+
+    shard_0 = pipeline._apply_scanner_shard(universe, shard_index=0, shard_count=3)
+    shard_1 = pipeline._apply_scanner_shard(universe, shard_index=1, shard_count=3)
+    shard_2 = pipeline._apply_scanner_shard(universe, shard_index=2, shard_count=3)
+
+    assert shard_0["ticker"].tolist() == ["AAA", "AAD", "AAG"]
+    assert shard_1["ticker"].tolist() == ["AAB", "AAE"]
+    assert shard_2["ticker"].tolist() == ["AAC", "AAF"]
+    merged = sorted([*shard_0["ticker"].tolist(), *shard_1["ticker"].tolist(), *shard_2["ticker"].tolist()])
+    assert merged == sorted(universe["ticker"].tolist())
+
+
+def test_validate_scanner_shard_config_requires_index_when_sharded() -> None:
+    with pytest.raises(ValueError, match="scanner_shard_index must be provided"):
+        pipeline._validate_scanner_shard_config(None, 3)
+
+    with pytest.raises(ValueError, match="scanner_shard_index must be in"):
+        pipeline._validate_scanner_shard_config(5, 3)
+
+    idx, count = pipeline._validate_scanner_shard_config(1, 3)
+    assert idx == 1
+    assert count == 3
+
+    idx_single, count_single = pipeline._validate_scanner_shard_config(None, 1)
+    assert idx_single is None
+    assert count_single == 1
 
 
 def test_apply_scanner_scope_limits_to_sp500_nasdaq500_and_watchlist(monkeypatch) -> None:
