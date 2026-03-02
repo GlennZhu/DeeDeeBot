@@ -113,7 +113,15 @@ jobs:
       - name: Restore baseline derived files
         run: |
           mkdir -p data/derived
-          cp -f artifacts/pre/data/derived/* data/derived/
+          if compgen -G "artifacts/pre/data/derived/*.csv" > /dev/null; then
+            cp -f artifacts/pre/data/derived/*.csv data/derived/
+          elif compgen -G "artifacts/pre/*.csv" > /dev/null; then
+            cp -f artifacts/pre/*.csv data/derived/
+          else
+            echo "ERROR: pre-shard artifact missing expected CSV files."
+            find artifacts/pre -maxdepth 4 -type f -print
+            exit 1
+          fi
 
       - name: Wait before shard run
         if: ${{ matrix.wait_minutes > 0 }}
@@ -191,7 +199,15 @@ jobs:
       - name: Restore baseline files before merge
         run: |
           mkdir -p data/derived
-          cp -f artifacts/pre/data/derived/* data/derived/
+          if compgen -G "artifacts/pre/data/derived/*.csv" > /dev/null; then
+            cp -f artifacts/pre/data/derived/*.csv data/derived/
+          elif compgen -G "artifacts/pre/*.csv" > /dev/null; then
+            cp -f artifacts/pre/*.csv data/derived/
+          else
+            echo "ERROR: pre-shard artifact missing expected CSV files."
+            find artifacts/pre -maxdepth 4 -type f -print
+            exit 1
+          fi
 
       - name: Merge scanner shards + update scanner events
         run: |
