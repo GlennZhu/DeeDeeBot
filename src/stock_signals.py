@@ -16,7 +16,6 @@ SQUAT_CRITICAL_SUPPORT_MAX_GAP = 0.01
 STOCK_TRIGGER_COLUMNS = [
     "entry_bullish_alignment",
     "exit_price_below_sma50",
-    "exit_death_cross_50_lt_100",
     "exit_death_cross_50_lt_200",
     "exit_rsi_overbought",
     "rsi_bullish_divergence",
@@ -415,7 +414,6 @@ def compute_stock_signal_row(
 
     entry_bullish_alignment = _safe_gt(sma14, sma50) and (_safe_gt(sma50, sma100) or _safe_gt(sma50, sma200))
     exit_price_below_sma50 = _safe_lt(price, sma50)
-    exit_death_cross_50_lt_100 = _safe_lt(sma50, sma100)
     exit_death_cross_50_lt_200 = _safe_lt(sma50, sma200)
     exit_rsi_overbought = _is_valid_number(rsi14) and float(rsi14) > 80.0
     rsi_bullish_divergence = detect_bullish_rsi_divergence(evaluated, rsi14_series)
@@ -505,7 +503,6 @@ def compute_stock_signal_row(
     if status != "ok":
         entry_bullish_alignment = False
         exit_price_below_sma50 = False
-        exit_death_cross_50_lt_100 = False
         exit_death_cross_50_lt_200 = False
         exit_rsi_overbought = False
         rsi_bullish_divergence = False
@@ -562,7 +559,6 @@ def compute_stock_signal_row(
         "relative_strength_reasons": str(relative["relative_strength_reasons"]),
         "entry_bullish_alignment": bool(entry_bullish_alignment),
         "exit_price_below_sma50": bool(exit_price_below_sma50),
-        "exit_death_cross_50_lt_100": bool(exit_death_cross_50_lt_100),
         "exit_death_cross_50_lt_200": bool(exit_death_cross_50_lt_200),
         "exit_rsi_overbought": bool(exit_rsi_overbought),
         "rsi_bullish_divergence": bool(rsi_bullish_divergence),
