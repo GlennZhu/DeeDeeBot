@@ -175,7 +175,7 @@ Optional environment knobs:
 - `SCANNER_YF_PREFETCH_BATCH_SIZE_SLOW` (default `25`)
 - `SCANNER_YF_PREFETCH_PAUSE_SLOW` (default `2.0`)
 - `MARKET_DATA_PROVIDER` (`auto`, `schwab`, `public`; default `auto`)
-- `SCHWAB_ACCESS_TOKEN` (optional if using refresh-token flow)
+- `SCHWAB_ACCESS_TOKEN` (optional local override; CI scanner workflow uses refresh-token preflight)
 - `SCHWAB_REFRESH_TOKEN`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET` (optional token refresh flow)
 - `SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST` (default `200`)
 - `SCANNER_FETCH_MAX_ATTEMPTS` (default `3`)
@@ -187,6 +187,46 @@ Optional environment knobs:
 - `STOCK_FAIL_MAX_ERROR_RATIO` (default `0.80`)
 - `SCANNER_FAIL_MAX_ERROR_RATIO` (default `0.60`)
 - `SCANNER_INSUFFICIENT_DATA_ALERT_RATIO` (default `0.10`; alert-only threshold, not a hard failure)
+
+## Weekly Schwab Token Rotation
+
+Use the semi-automated helper to rotate `SCHWAB_REFRESH_TOKEN` (expected cadence is about every 7 days):
+
+```bash
+./scripts/rotate_schwab_token.sh --repo <owner>/<repo>
+```
+
+The script auto-loads `.env.schwab.local` (ignored by git because `.env.*` is in `.gitignore`).
+Create that file locally:
+
+```bash
+cat > .env.schwab.local <<'EOF'
+SCHWAB_CLIENT_ID='your_client_id'
+SCHWAB_CLIENT_SECRET='your_client_secret'
+SCHWAB_REDIRECT_URI='https://127.0.0.1'
+GH_REPO='owner/repo'
+EOF
+```
+
+You can also point to a custom file:
+
+```bash
+./scripts/rotate_schwab_token.sh --env-file /path/to/local.env
+```
+
+The helper will:
+
+- Open/print the Schwab authorize URL
+- Prompt for the full browser redirect URL
+- Exchange code for tokens and validate `refresh_token` exists
+- Update repository secret `SCHWAB_REFRESH_TOKEN` using `gh secret set`
+
+One-time prerequisites:
+
+- Install GitHub CLI (`gh`)
+- Authenticate once with secret-management permissions: `gh auth login`
+
+If token auth is broken, `update_stock_scanner_daily.yml` now runs a Schwab preflight check and fails fast before shard work, with a Discord alert when `DISCORD_WEBHOOK_URL` is configured.
 
 ## Run Dashboard
 
@@ -226,7 +266,6 @@ Workflow `update_stock_scanner_daily.yml` runs once per weekday at fixed UTC tim
 
 The workflow is wired to fail fast when stock/scanner error ratios exceed configured budgets and now expects Schwab credentials in repository secrets:
 
-- `SCHWAB_ACCESS_TOKEN` (or refresh-token trio below)
 - `SCHWAB_REFRESH_TOKEN`
 - `SCHWAB_CLIENT_ID`
 - `SCHWAB_CLIENT_SECRET`

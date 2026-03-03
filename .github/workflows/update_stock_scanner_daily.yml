@@ -10,7 +10,6 @@ permissions:
 
 env:
   MARKET_DATA_PROVIDER: "schwab"
-  SCHWAB_ACCESS_TOKEN: ${{ secrets.SCHWAB_ACCESS_TOKEN }}
   SCHWAB_REFRESH_TOKEN: ${{ secrets.SCHWAB_REFRESH_TOKEN }}
   SCHWAB_CLIENT_ID: ${{ secrets.SCHWAB_CLIENT_ID }}
   SCHWAB_CLIENT_SECRET: ${{ secrets.SCHWAB_CLIENT_SECRET }}
@@ -42,6 +41,56 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Preflight Schwab auth refresh
+        id: schwab_auth_preflight
+        continue-on-error: true
+        run: python scripts/schwab_auth_preflight.py
+
+      - name: Alert on Schwab auth preflight failure
+        if: ${{ steps.schwab_auth_preflight.outcome == 'failure' }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from urllib import request
+
+          webhook = str(os.getenv("DISCORD_WEBHOOK_URL", "")).strip()
+          if not webhook:
+              print("DISCORD_WEBHOOK_URL is not configured; skipping preflight alert.")
+              raise SystemExit(0)
+
+          run_url = (
+              f"{os.getenv('GITHUB_SERVER_URL', '').rstrip('/')}/"
+              f"{os.getenv('GITHUB_REPOSITORY', '')}/actions/runs/{os.getenv('GITHUB_RUN_ID', '')}"
+          )
+          message = (
+              "[update_stock_scanner_daily] Schwab auth preflight failed before scanner execution.\n"
+              f"Repo: {os.getenv('GITHUB_REPOSITORY', 'unknown')}\n"
+              f"Run: {run_url}\n"
+              "Action: rotate SCHWAB_REFRESH_TOKEN and rerun the workflow."
+          )
+          payload = json.dumps({"content": message}).encode("utf-8")
+          req = request.Request(
+              webhook,
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with request.urlopen(req, timeout=10) as response:
+                  print(f"Sent Discord alert for auth preflight failure (HTTP {response.status}).")
+          except Exception as exc:
+              print(f"Warning: failed to send Discord alert: {exc}")
+          PY
+
+      - name: Fail fast when Schwab auth preflight fails
+        if: ${{ steps.schwab_auth_preflight.outcome == 'failure' }}
+        run: |
+          echo "ERROR: Schwab auth preflight failed. Rotate SCHWAB_REFRESH_TOKEN and retry."
+          exit 1
 
       - name: Refresh watchlist + universe (scanner skipped)
         env:
