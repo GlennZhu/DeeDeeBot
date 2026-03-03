@@ -35,6 +35,8 @@ HISTORY_OPTIONS = {
 }
 
 EASTERN_TZ = ZoneInfo("America/New_York")
+MACRO_NEW_WINDOW_DAYS = 14
+MACRO_NEW_BADGE_COLOR = "#0f766e"
 
 STATE_COLORS = {
     "long_environment": "#188038",
@@ -317,6 +319,21 @@ def _signal_badge(label: str, color: str) -> str:
     )
 
 
+def _is_recent_timestamp(value: object, days: int) -> bool:
+    if pd.isna(value):
+        return False
+    try:
+        ts = pd.Timestamp(value)
+    except Exception:
+        return False
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
+    cutoff = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=days)
+    return ts >= cutoff
+
+
 def _apply_history_window(frame: pd.DataFrame, years: int | None) -> pd.DataFrame:
     if frame.empty or years is None or "date" not in frame.columns:
         return frame
@@ -492,6 +509,14 @@ def _render_macro_tab(selected_window: str) -> None:
 
         signal_row = metric_signal.iloc[0] if not metric_signal.empty else None
         snapshot_row = metric_snapshot.iloc[0] if not metric_snapshot.empty else None
+
+        metric_last_updated = None
+        if snapshot_row is not None and "last_updated_utc" in metric_snapshot.columns:
+            metric_last_updated = snapshot_row.get("last_updated_utc")
+        if pd.isna(metric_last_updated) and signal_row is not None and "last_updated_utc" in metric_signal.columns:
+            metric_last_updated = signal_row.get("last_updated_utc")
+        if _is_recent_timestamp(metric_last_updated, days=MACRO_NEW_WINDOW_DAYS):
+            card.markdown(_signal_badge("NEW", MACRO_NEW_BADGE_COLOR), unsafe_allow_html=True)
 
         if metric_key == "m2":
             m2_yoy = _to_m2_yoy(metric_series)
