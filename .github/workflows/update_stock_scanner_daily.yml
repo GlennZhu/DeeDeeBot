@@ -17,6 +17,7 @@ env:
   SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST: "180"
   STOCK_FAIL_MAX_ERROR_RATIO: "0.95"
   SCANNER_FAIL_MAX_ERROR_RATIO: "0.65"
+  SCANNER_INSUFFICIENT_DATA_ALERT_RATIO: "0.10"
   SCANNER_FETCH_MAX_ATTEMPTS: "2"
   SCANNER_FETCH_BACKOFF_SECONDS: "0.2"
   SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE: "0.05"
@@ -210,6 +211,8 @@ jobs:
           fi
 
       - name: Merge scanner shards + update scanner events
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
           python scripts/merge_scanner_shards.py \
             --previous-scanner data/derived/scanner_signals_previous_full.csv \

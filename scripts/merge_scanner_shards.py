@@ -88,6 +88,18 @@ def main() -> None:
     previous = pipeline._load_previous_scanner_signals(args.previous_scanner)
     scanner_events = pipeline._detect_new_scanner_trigger_events(previous, merged)
     now_iso = pd.Timestamp.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    insufficient_data_alert_ratio = pipeline._env_float(
+        "SCANNER_INSUFFICIENT_DATA_ALERT_RATIO",
+        pipeline.SCANNER_INSUFFICIENT_DATA_ALERT_RATIO_DEFAULT,
+        minimum=0.0,
+    )
+    pipeline._notify_scanner_insufficient_data_alert(
+        previous_scanner_signals=previous,
+        scanner_signals=merged,
+        now_iso=now_iso,
+        alert_ratio_threshold=insufficient_data_alert_ratio,
+        context_label="merged_shards",
+    )
     pipeline._update_signal_event_history(
         args.signal_events,
         macro_events=[],

@@ -660,11 +660,10 @@ def _render_scanner_tab() -> None:
         return
 
     scanner_signals["ticker"] = scanner_signals["ticker"].astype(str).str.upper()
+    latest_scanner_update_et = "N/A"
     if "last_updated_utc" in scanner_signals.columns and not scanner_signals["last_updated_utc"].dropna().empty:
-        st.info(
-            "Last successful scanner update (ET): "
-            f"{_format_et_timestamp(scanner_signals['last_updated_utc'].dropna().max())}"
-        )
+        latest_scanner_update_et = _format_et_timestamp(scanner_signals["last_updated_utc"].dropna().max())
+        st.info(f"Last successful scanner update (ET): {latest_scanner_update_et}")
 
     if "is_watchlist" not in scanner_signals.columns:
         scanner_signals["is_watchlist"] = False
@@ -701,8 +700,37 @@ def _render_scanner_tab() -> None:
     scanner_signals["_any_triggered_today"] = scanner_signals[trigger_cols].any(axis=1)
     scanner_signals["_any_active"] = scanner_signals[active_cols].any(axis=1)
 
+    if "status" in scanner_signals.columns:
+        status_series = scanner_signals["status"].fillna("").astype(str).str.strip().str.lower()
+    else:
+        status_series = pd.Series("", index=scanner_signals.index, dtype="string")
+    rows_total = int(len(scanner_signals))
+    ok_rows = int((status_series == "ok").sum())
+    insufficient_data_rows = int((status_series == "insufficient_data").sum())
+    if "error_type" in scanner_signals.columns:
+        error_type_series = scanner_signals["error_type"].fillna("").astype(str).str.strip()
+    else:
+        error_type_series = pd.Series("", index=scanner_signals.index, dtype="string")
+    if "error_provider" in scanner_signals.columns:
+        error_provider_series = scanner_signals["error_provider"].fillna("").astype(str).str.strip()
+    else:
+        error_provider_series = pd.Series("", index=scanner_signals.index, dtype="string")
+    hard_error_rows = int(((error_type_series != "") | (error_provider_series != "")).sum())
+
+    st.caption(
+        "Latest scanner quality snapshot "
+        f"(updated ET: {latest_scanner_update_et}): "
+        f"{rows_total} rows total, {ok_rows} ok, {insufficient_data_rows} insufficient_data, "
+        f"{hard_error_rows} hard errors."
+    )
+    quality_cols = st.columns(4)
+    quality_cols[0].metric("Rows Total", rows_total)
+    quality_cols[1].metric("OK", ok_rows)
+    quality_cols[2].metric("Insufficient Data", insufficient_data_rows)
+    quality_cols[3].metric("Hard Errors", hard_error_rows)
+
     metric_cols = st.columns(4)
-    metric_cols[0].metric("Scanned", len(scanner_signals))
+    metric_cols[0].metric("Scanned", rows_total)
     metric_cols[1].metric("Triggered Today", int(scanner_signals["_any_triggered_today"].sum()))
     metric_cols[2].metric("Currently Active", int(scanner_signals["_any_active"].sum()))
     metric_cols[3].metric("Watchlist", int(scanner_signals["is_watchlist"].sum()))

@@ -69,6 +69,7 @@ SCANNER_UNIVERSE_REFRESH_HOURS = 24
 SCANNER_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.\-]{0,5}$")
 SCANNER_FAIL_MAX_ERROR_RATIO_DEFAULT = 0.60
 STOCK_FAIL_MAX_ERROR_RATIO_DEFAULT = 0.80
+SCANNER_INSUFFICIENT_DATA_ALERT_RATIO_DEFAULT = 0.10
 SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE_DEFAULT = 0.05
 SCANNER_CIRCUIT_PROBE_COUNT_DEFAULT = 6
 WATCHLIST_CIRCUIT_PREFETCH_MAX_COVERAGE_DEFAULT = 0.05
@@ -714,6 +715,90 @@ def _enforce_error_budget(frame: pd.DataFrame, *, name: str, max_error_ratio: fl
             f"{name} error ratio exceeded threshold: errors={error_count}/{len(frame)} "
             f"({ratio:.1%}) > allowed {threshold:.1%}"
         )
+
+
+def _status_ratio(frame: pd.DataFrame, *, status_value: str) -> tuple[int, int, float]:
+    total = int(len(frame))
+    if total <= 0 or "status" not in frame.columns:
+        return (0, total, 0.0)
+    normalized = frame["status"].fillna("").astype(str).str.strip().str.lower()
+    target = str(status_value).strip().lower()
+    count = int((normalized == target).sum())
+    ratio = (float(count) / float(total)) if total else 0.0
+    return (count, total, ratio)
+
+
+def _hard_error_row_count(frame: pd.DataFrame) -> int:
+    if frame.empty:
+        return 0
+    if "error_type" in frame.columns:
+        error_type = frame["error_type"].fillna("").astype(str).str.strip()
+    else:
+        error_type = pd.Series("", index=frame.index, dtype="string")
+    if "error_provider" in frame.columns:
+        error_provider = frame["error_provider"].fillna("").astype(str).str.strip()
+    else:
+        error_provider = pd.Series("", index=frame.index, dtype="string")
+    return int(((error_type != "") | (error_provider != "")).sum())
+
+
+def _notify_scanner_insufficient_data_alert(
+    *,
+    previous_scanner_signals: pd.DataFrame,
+    scanner_signals: pd.DataFrame,
+    now_iso: str,
+    alert_ratio_threshold: float,
+    context_label: str,
+) -> None:
+    threshold = min(1.0, max(0.0, float(alert_ratio_threshold)))
+    insufficient_count, total_rows, insufficient_ratio = _status_ratio(scanner_signals, status_value="insufficient_data")
+    ok_count, _, _ = _status_ratio(scanner_signals, status_value="ok")
+    hard_error_rows = _hard_error_row_count(scanner_signals)
+    _scanner_log(
+        "Scanner quality summary "
+        f"(context={context_label}): rows_total={total_rows}, ok={ok_count}, "
+        f"insufficient_data={insufficient_count} ({insufficient_ratio:.1%}), "
+        f"hard_error_rows={hard_error_rows}, alert_threshold={threshold:.1%}."
+    )
+    if total_rows <= 0:
+        return
+
+    prev_insufficient_count, prev_total_rows, prev_insufficient_ratio = _status_ratio(
+        previous_scanner_signals, status_value="insufficient_data"
+    )
+    crossed_above_threshold = insufficient_ratio > threshold and prev_insufficient_ratio <= threshold
+    if not crossed_above_threshold:
+        return
+
+    print(
+        "Warning: scanner insufficient_data coverage degraded "
+        f"(context={context_label}): {insufficient_count}/{total_rows} ({insufficient_ratio:.1%}) "
+        f"> threshold {threshold:.1%}."
+    )
+
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        print("Warning: DISCORD_WEBHOOK_URL is not set; skipping scanner quality degradation notification.")
+        return
+
+    message = "\n".join(
+        [
+            f"Scanner coverage degraded ({now_iso})",
+            (
+                f"- context={context_label}; insufficient_data={insufficient_count}/{total_rows} "
+                f"({insufficient_ratio:.1%}) > threshold={threshold:.1%}"
+            ),
+            (
+                f"- previous insufficient_data={prev_insufficient_count}/{prev_total_rows} "
+                f"({prev_insufficient_ratio:.1%})"
+            ),
+            f"- latest status mix: ok={ok_count}, hard_error_rows={hard_error_rows}",
+        ]
+    )
+    try:
+        _post_discord_message(webhook_url, message)
+    except Exception as exc:
+        print(f"Warning: failed to send scanner quality degradation alert: {exc}")
 
 
 def _empty_stock_universe_frame() -> pd.DataFrame:
@@ -2364,6 +2449,11 @@ def _run_stock_pipeline(
         SCANNER_FAIL_MAX_ERROR_RATIO_DEFAULT,
         minimum=0.0,
     )
+    configured_scanner_insufficient_data_alert_ratio = _env_float(
+        "SCANNER_INSUFFICIENT_DATA_ALERT_RATIO",
+        SCANNER_INSUFFICIENT_DATA_ALERT_RATIO_DEFAULT,
+        minimum=0.0,
+    )
     if run_watchlist:
         previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
         stock_signals = _compute_watchlist_signals(
@@ -2464,7 +2554,8 @@ def _run_stock_pipeline(
         f"progress_log_every={configured_scanner_progress_log_every}, "
         f"non_watchlist_intraday_quotes={non_watchlist_intraday_quotes}, "
         f"stock_fail_max_error_ratio={configured_stock_fail_max_error_ratio:.2f}, "
-        f"scanner_fail_max_error_ratio={configured_scanner_fail_max_error_ratio:.2f}"
+        f"scanner_fail_max_error_ratio={configured_scanner_fail_max_error_ratio:.2f}, "
+        f"scanner_insufficient_data_alert_ratio={configured_scanner_insufficient_data_alert_ratio:.2f}"
     )
     universe = _load_or_refresh_stock_universe(STOCK_UNIVERSE_PATH, watchlist=watchlist, now_iso=now_iso)
     _scanner_log(f"Loaded scanner universe rows={len(universe)}.")
@@ -2503,6 +2594,20 @@ def _run_stock_pipeline(
         name="scanner",
         max_error_ratio=configured_scanner_fail_max_error_ratio,
     )
+    if configured_scanner_shard_count <= 1:
+        _notify_scanner_insufficient_data_alert(
+            previous_scanner_signals=previous_scanner_signals,
+            scanner_signals=scanner_signals,
+            now_iso=now_iso,
+            alert_ratio_threshold=configured_scanner_insufficient_data_alert_ratio,
+            context_label="full_scanner_run",
+        )
+    else:
+        _scanner_log(
+            "Skipping scanner insufficient_data coverage alert on partial shard run: "
+            f"shard_index={configured_scanner_shard_index if configured_scanner_shard_index is not None else 0}, "
+            f"shard_count={configured_scanner_shard_count}."
+        )
     scanner_events = _detect_new_scanner_trigger_events(previous_scanner_signals, scanner_signals)
     _update_signal_event_history(
         SIGNAL_EVENTS_PATH,

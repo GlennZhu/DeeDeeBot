@@ -186,6 +186,7 @@ Optional environment knobs:
 - `WATCHLIST_CIRCUIT_PROBE_COUNT` (default `4`)
 - `STOCK_FAIL_MAX_ERROR_RATIO` (default `0.80`)
 - `SCANNER_FAIL_MAX_ERROR_RATIO` (default `0.60`)
+- `SCANNER_INSUFFICIENT_DATA_ALERT_RATIO` (default `0.10`; alert-only threshold, not a hard failure)
 
 ## Run Dashboard
 
@@ -194,6 +195,7 @@ streamlit run app.py
 ```
 
 The dashboard uses cached CSV files only (no live API calls on page load).
+The `Market Scanner` tab shows latest scanner quality counts (`rows total`, `ok`, `insufficient_data`, and hard-error rows from `error_type` / `error_provider`) plus last update time in ET.
 
 ## Tests
 

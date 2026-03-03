@@ -539,6 +539,89 @@ def test_compute_scanner_signals_triggers_circuit_breaker_on_repeated_rate_limit
     assert out["status_message"].astype(str).str.contains("Circuit breaker").any()
 
 
+def test_notify_scanner_insufficient_data_alert_posts_when_ratio_crosses_threshold(monkeypatch) -> None:
+    previous = pd.DataFrame(
+        [
+            {"ticker": "AAA", "status": "ok"},
+            {"ticker": "AAB", "status": "ok"},
+            {"ticker": "AAC", "status": "ok"},
+            {"ticker": "AAD", "status": "ok"},
+            {"ticker": "AAE", "status": "ok"},
+            {"ticker": "AAF", "status": "ok"},
+            {"ticker": "AAG", "status": "ok"},
+            {"ticker": "AAH", "status": "ok"},
+            {"ticker": "AAI", "status": "ok"},
+            {"ticker": "AAJ", "status": "insufficient_data"},
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            {"ticker": "AAA", "status": "ok"},
+            {"ticker": "AAB", "status": "ok"},
+            {"ticker": "AAC", "status": "ok"},
+            {"ticker": "AAD", "status": "ok"},
+            {"ticker": "AAE", "status": "ok"},
+            {"ticker": "AAF", "status": "ok"},
+            {"ticker": "AAG", "status": "ok"},
+            {"ticker": "AAH", "status": "ok"},
+            {"ticker": "AAI", "status": "insufficient_data"},
+            {"ticker": "AAJ", "status": "insufficient_data"},
+        ]
+    )
+
+    sent_messages: list[tuple[str, str]] = []
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.test/webhook")
+    monkeypatch.setattr(pipeline, "_post_discord_message", lambda url, content: sent_messages.append((url, content)))
+
+    pipeline._notify_scanner_insufficient_data_alert(
+        previous_scanner_signals=previous,
+        scanner_signals=current,
+        now_iso="2026-03-02T23:38:15Z",
+        alert_ratio_threshold=0.10,
+        context_label="test_context",
+    )
+
+    assert len(sent_messages) == 1
+    assert sent_messages[0][0] == "https://example.test/webhook"
+    assert "Scanner coverage degraded" in sent_messages[0][1]
+    assert "insufficient_data=2/10 (20.0%) > threshold=10.0%" in sent_messages[0][1]
+
+
+def test_notify_scanner_insufficient_data_alert_skips_when_already_degraded(monkeypatch) -> None:
+    previous = pd.DataFrame(
+        [
+            {"ticker": "AAA", "status": "insufficient_data"},
+            {"ticker": "AAB", "status": "insufficient_data"},
+            {"ticker": "AAC", "status": "ok"},
+            {"ticker": "AAD", "status": "ok"},
+            {"ticker": "AAE", "status": "ok"},
+        ]
+    )
+    current = pd.DataFrame(
+        [
+            {"ticker": "AAA", "status": "insufficient_data"},
+            {"ticker": "AAB", "status": "insufficient_data"},
+            {"ticker": "AAC", "status": "insufficient_data"},
+            {"ticker": "AAD", "status": "ok"},
+            {"ticker": "AAE", "status": "ok"},
+        ]
+    )
+
+    sent_messages: list[tuple[str, str]] = []
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://example.test/webhook")
+    monkeypatch.setattr(pipeline, "_post_discord_message", lambda url, content: sent_messages.append((url, content)))
+
+    pipeline._notify_scanner_insufficient_data_alert(
+        previous_scanner_signals=previous,
+        scanner_signals=current,
+        now_iso="2026-03-02T23:38:15Z",
+        alert_ratio_threshold=0.10,
+        context_label="test_context",
+    )
+
+    assert sent_messages == []
+
+
 def test_detect_new_threshold_events_flags_only_new_trigger() -> None:
     previous = pd.DataFrame(
         [
