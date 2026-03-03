@@ -19,11 +19,13 @@ import pandas as pd
 
 from src.config import DEFAULT_LOOKBACK_YEARS, METRIC_ORDER, SERIES_CONFIG
 from src.data_fetch import (
+    MarketDataError,
     fetch_fred_series,
     fetch_stock_daily_bars,
     fetch_stock_daily_bars_batch_yfinance,
     fetch_stock_daily_history,
     fetch_stock_daily_history_batch_yfinance,
+    fetch_stock_intraday_quotes_batch,
     fetch_stock_intraday_quote,
     fetch_sp500_constituents,
     fetch_stock_universe_snapshot,
@@ -55,6 +57,7 @@ SCANNER_DEFAULT_PARALLEL_WORKERS = 8
 SCANNER_DEFAULT_DAILY_REQUESTS_PER_SECOND = 4.0
 SCANNER_DEFAULT_INTRADAY_REQUESTS_PER_SECOND = 1.5
 SCANNER_DEFAULT_PROGRESS_LOG_EVERY = 25
+SCANNER_DEFAULT_SHARD_COUNT = 1
 SCANNER_YF_BATCH_PREFETCH_SIZE_FAST = 100
 SCANNER_YF_BATCH_PREFETCH_PAUSE_FAST = 0.4
 SCANNER_YF_BATCH_PREFETCH_SIZE_SLOW = 25
@@ -64,6 +67,13 @@ SCANNER_FETCH_MAX_ATTEMPTS = 3
 SCANNER_FETCH_BACKOFF_SECONDS = 0.4
 SCANNER_UNIVERSE_REFRESH_HOURS = 24
 SCANNER_TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.\-]{0,5}$")
+SCANNER_FAIL_MAX_ERROR_RATIO_DEFAULT = 0.60
+STOCK_FAIL_MAX_ERROR_RATIO_DEFAULT = 0.80
+SCANNER_INSUFFICIENT_DATA_ALERT_RATIO_DEFAULT = 0.10
+SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE_DEFAULT = 0.05
+SCANNER_CIRCUIT_PROBE_COUNT_DEFAULT = 6
+WATCHLIST_CIRCUIT_PREFETCH_MAX_COVERAGE_DEFAULT = 0.05
+WATCHLIST_CIRCUIT_PROBE_COUNT_DEFAULT = 4
 
 STOCK_UNIVERSE_COLUMNS = [
     "ticker",
@@ -192,6 +202,36 @@ SCANNER_TRIGGER_LABELS: dict[str, str] = {
     "recovery_momentum_triggered_today": "MA Recovery + Momentum Confirmation",
     "ambush_squat_triggered_today": "Ambush / Squat Alert",
 }
+ERROR_DIAGNOSTIC_COLUMNS = ["error_type", "error_provider", "error_retryable"]
+ERROR_TYPE_RATE_LIMITED = "rate_limited"
+ERROR_TYPE_UPSTREAM_UNREACHABLE = "upstream_unreachable"
+ERROR_TYPE_SYMBOL_NOT_FOUND = "symbol_not_found"
+ERROR_TYPE_AUTH_ERROR = "auth_error"
+ERROR_TYPE_UPSTREAM_API_ERROR = "upstream_api_error"
+ERROR_TYPE_UPSTREAM_INVALID_RESPONSE = "upstream_invalid_response"
+ERROR_TYPE_FETCH_ERROR = "fetch_error"
+ERROR_TYPE_COMPUTE_ERROR = "compute_error"
+SCANNER_YF_PREFETCH_DEGRADED_COVERAGE = 0.35
+STOCK_YF_PREFETCH_DEGRADED_COVERAGE = 0.35
+SCANNER_BOOL_COLUMNS = [
+    "bullish_alignment_active",
+    "bullish_alignment_triggered_today",
+    "recovery_close_cross_sma50_today",
+    "recovery_three_bullish_candles_today",
+    "recovery_momentum_triggered_today",
+    "ambush_trend_bullish_active",
+    "ambush_near_ma100_active",
+    "ambush_near_ma200_active",
+    "ambush_squat_active",
+    "ambush_squat_triggered_today",
+]
+STOCK_BOOL_COLUMNS = [
+    "rs_structural_divergence",
+    "rs_trend_down",
+    "rs_negative_alpha",
+    "relative_strength_weak",
+    *STOCK_TRIGGER_COLUMNS,
+]
 
 
 def _default_start_date(lookback_years: int) -> str:
@@ -483,6 +523,15 @@ def _normalize_watchlist_rows(rows: list[dict[str, Any]]) -> list[dict[str, str]
     return normalized
 
 
+def _normalize_optional_text(raw_value: Any) -> str:
+    if pd.isna(raw_value):
+        return ""
+    text = str(raw_value).strip()
+    if text.lower() in {"nan", "none", "<na>"}:
+        return ""
+    return text
+
+
 def _write_watchlist(path: Path, rows: list[dict[str, Any]]) -> None:
     normalized = _normalize_watchlist_rows(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -517,13 +566,14 @@ def _load_or_initialize_watchlist(path: Path) -> pd.DataFrame:
 
     normalized_frame = pd.DataFrame(normalized_rows, columns=["ticker", "benchmark"])
     current_subset = frame.copy()
-    if "benchmark" not in current_subset.columns:
+    missing_benchmark_column = "benchmark" not in current_subset.columns
+    if missing_benchmark_column:
         current_subset["benchmark"] = DEFAULT_STOCK_BENCHMARK
     current_subset = current_subset[["ticker", "benchmark"]]
     current_subset["ticker"] = current_subset["ticker"].map(_normalize_ticker)
     current_subset["benchmark"] = current_subset["benchmark"].map(_normalize_benchmark)
 
-    if not normalized_frame.equals(current_subset.reset_index(drop=True)):
+    if missing_benchmark_column or not normalized_frame.equals(current_subset.reset_index(drop=True)):
         _write_watchlist(path, normalized_rows)
 
     return normalized_frame
@@ -557,6 +607,17 @@ def _env_float(name: str, default_value: float, *, minimum: float = 0.0) -> floa
     return parsed
 
 
+def _env_optional_int(name: str) -> int | None:
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return None
+    try:
+        return int(raw_value)
+    except ValueError:
+        print(f"Warning: invalid integer for {name}={raw_value!r}; ignoring.")
+        return None
+
+
 def _env_bool(name: str, default_value: bool) -> bool:
     raw_value = os.getenv(name, "").strip()
     if not raw_value:
@@ -572,6 +633,172 @@ def _coerce_bool_flag(raw_value: Any) -> bool:
     if isinstance(raw_value, (int, float)):
         return bool(raw_value)
     return str(raw_value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _classify_fetch_exception(exc: Exception) -> tuple[str, str, bool]:
+    if isinstance(exc, MarketDataError):
+        return (str(exc.error_type), str(exc.provider), bool(exc.retryable))
+
+    message = str(exc)
+    normalized = message.lower()
+    provider = "unknown"
+    if "schwab" in normalized or "schwabapi.com" in normalized:
+        provider = "schwab"
+    elif "yfratelimiterror" in normalized or "yfinance" in normalized or "yahoo" in normalized:
+        provider = "yfinance"
+    elif "stooq" in normalized:
+        provider = "stooq"
+
+    if "too many requests" in normalized or "rate limit" in normalized or "yfratelimiterror" in normalized or " 429" in normalized:
+        return (ERROR_TYPE_RATE_LIMITED, provider, True)
+    if "invalid access token" in normalized or "auth rejected" in normalized or "unauthorized" in normalized:
+        return (ERROR_TYPE_AUTH_ERROR, provider, False)
+    if (
+        "failed to establish a new connection" in normalized
+        or "max retries exceeded" in normalized
+        or "connection refused" in normalized
+        or "timed out" in normalized
+        or "temporary failure" in normalized
+        or "name resolution" in normalized
+        or "connection reset" in normalized
+    ):
+        return (ERROR_TYPE_UPSTREAM_UNREACHABLE, provider, True)
+    if (
+        "symbol not found" in normalized
+        or "no data returned" in normalized
+        or "no daily" in normalized
+        or "not found" in normalized
+    ):
+        return (ERROR_TYPE_SYMBOL_NOT_FOUND, provider, False)
+    return (ERROR_TYPE_FETCH_ERROR, provider, False)
+
+
+def _default_error_diagnostics() -> dict[str, Any]:
+    return {
+        "error_type": "",
+        "error_provider": "",
+        "error_retryable": False,
+    }
+
+
+def _apply_error_diagnostics(
+    row: dict[str, Any],
+    *,
+    error_type: str,
+    error_provider: str,
+    error_retryable: bool,
+) -> dict[str, Any]:
+    row["error_type"] = str(error_type).strip()
+    row["error_provider"] = str(error_provider).strip()
+    row["error_retryable"] = bool(error_retryable)
+    return row
+
+
+def _is_rate_limited_error_row(row: dict[str, Any]) -> bool:
+    return (
+        str(row.get("status", "")).strip() == "fetch_error"
+        and str(row.get("error_type", "")).strip() == ERROR_TYPE_RATE_LIMITED
+    )
+
+
+def _enforce_error_budget(frame: pd.DataFrame, *, name: str, max_error_ratio: float | None) -> None:
+    if max_error_ratio is None:
+        return
+    if frame.empty or "status" not in frame.columns:
+        return
+    threshold = min(1.0, max(0.0, float(max_error_ratio)))
+    status_series = frame["status"].fillna("").astype(str)
+    error_count = int(status_series.isin({"fetch_error", "compute_error"}).sum())
+    ratio = float(error_count) / float(len(frame)) if len(frame) else 0.0
+    if ratio > threshold:
+        raise RuntimeError(
+            f"{name} error ratio exceeded threshold: errors={error_count}/{len(frame)} "
+            f"({ratio:.1%}) > allowed {threshold:.1%}"
+        )
+
+
+def _status_ratio(frame: pd.DataFrame, *, status_value: str) -> tuple[int, int, float]:
+    total = int(len(frame))
+    if total <= 0 or "status" not in frame.columns:
+        return (0, total, 0.0)
+    normalized = frame["status"].fillna("").astype(str).str.strip().str.lower()
+    target = str(status_value).strip().lower()
+    count = int((normalized == target).sum())
+    ratio = (float(count) / float(total)) if total else 0.0
+    return (count, total, ratio)
+
+
+def _hard_error_row_count(frame: pd.DataFrame) -> int:
+    if frame.empty:
+        return 0
+    if "error_type" in frame.columns:
+        error_type = frame["error_type"].fillna("").astype(str).str.strip()
+    else:
+        error_type = pd.Series("", index=frame.index, dtype="string")
+    if "error_provider" in frame.columns:
+        error_provider = frame["error_provider"].fillna("").astype(str).str.strip()
+    else:
+        error_provider = pd.Series("", index=frame.index, dtype="string")
+    return int(((error_type != "") | (error_provider != "")).sum())
+
+
+def _notify_scanner_insufficient_data_alert(
+    *,
+    previous_scanner_signals: pd.DataFrame,
+    scanner_signals: pd.DataFrame,
+    now_iso: str,
+    alert_ratio_threshold: float,
+    context_label: str,
+) -> None:
+    threshold = min(1.0, max(0.0, float(alert_ratio_threshold)))
+    insufficient_count, total_rows, insufficient_ratio = _status_ratio(scanner_signals, status_value="insufficient_data")
+    ok_count, _, _ = _status_ratio(scanner_signals, status_value="ok")
+    hard_error_rows = _hard_error_row_count(scanner_signals)
+    _scanner_log(
+        "Scanner quality summary "
+        f"(context={context_label}): rows_total={total_rows}, ok={ok_count}, "
+        f"insufficient_data={insufficient_count} ({insufficient_ratio:.1%}), "
+        f"hard_error_rows={hard_error_rows}, alert_threshold={threshold:.1%}."
+    )
+    if total_rows <= 0:
+        return
+
+    prev_insufficient_count, prev_total_rows, prev_insufficient_ratio = _status_ratio(
+        previous_scanner_signals, status_value="insufficient_data"
+    )
+    crossed_above_threshold = insufficient_ratio > threshold and prev_insufficient_ratio <= threshold
+    if not crossed_above_threshold:
+        return
+
+    print(
+        "Warning: scanner insufficient_data coverage degraded "
+        f"(context={context_label}): {insufficient_count}/{total_rows} ({insufficient_ratio:.1%}) "
+        f"> threshold {threshold:.1%}."
+    )
+
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        print("Warning: DISCORD_WEBHOOK_URL is not set; skipping scanner quality degradation notification.")
+        return
+
+    message = "\n".join(
+        [
+            f"Scanner coverage degraded ({now_iso})",
+            (
+                f"- context={context_label}; insufficient_data={insufficient_count}/{total_rows} "
+                f"({insufficient_ratio:.1%}) > threshold={threshold:.1%}"
+            ),
+            (
+                f"- previous insufficient_data={prev_insufficient_count}/{prev_total_rows} "
+                f"({prev_insufficient_ratio:.1%})"
+            ),
+            f"- latest status mix: ok={ok_count}, hard_error_rows={hard_error_rows}",
+        ]
+    )
+    try:
+        _post_discord_message(webhook_url, message)
+    except Exception as exc:
+        print(f"Warning: failed to send scanner quality degradation alert: {exc}")
 
 
 def _empty_stock_universe_frame() -> pd.DataFrame:
@@ -728,8 +955,8 @@ def _load_or_initialize_scanner_thesis(path: Path, watchlist: pd.DataFrame) -> p
     out = out[SCANNER_THESIS_COLUMNS]
     out["ticker"] = out["ticker"].map(_normalize_ticker)
     out = out[out["ticker"] != ""]
-    out["pain_point"] = out["pain_point"].astype(str).str.strip()
-    out["solution"] = out["solution"].astype(str).str.strip()
+    out["pain_point"] = out["pain_point"].map(_normalize_optional_text)
+    out["solution"] = out["solution"].map(_normalize_optional_text)
     out["conviction"] = pd.to_numeric(out["conviction"], errors="coerce").fillna(0.0).clip(lower=0.0, upper=2.0)
 
     watchlist_tickers = set(watchlist["ticker"].map(_normalize_ticker).tolist())
@@ -762,8 +989,8 @@ def _build_thesis_lookup(thesis_frame: pd.DataFrame) -> dict[str, dict[str, Any]
         ticker = _normalize_ticker(row.get("ticker", ""))
         if not ticker:
             continue
-        pain_point = str(row.get("pain_point", "")).strip()
-        solution = str(row.get("solution", "")).strip()
+        pain_point = _normalize_optional_text(row.get("pain_point", ""))
+        solution = _normalize_optional_text(row.get("solution", ""))
         conviction = pd.to_numeric(row.get("conviction", 0.0), errors="coerce")
         conviction_score = 0.0 if pd.isna(conviction) else float(conviction)
         conviction_score = min(2.0, max(0.0, conviction_score))
@@ -803,8 +1030,13 @@ class _RequestPacer:
 
 
 def _backoff_sleep(attempt_index: int) -> None:
-    delay = SCANNER_FETCH_BACKOFF_SECONDS * (2**attempt_index)
-    jitter = random.uniform(0.0, SCANNER_FETCH_BACKOFF_SECONDS)
+    configured_base = _env_float(
+        "SCANNER_FETCH_BACKOFF_SECONDS",
+        SCANNER_FETCH_BACKOFF_SECONDS,
+        minimum=0.0,
+    )
+    delay = configured_base * (2**attempt_index)
+    jitter = random.uniform(0.0, configured_base) if configured_base > 0 else 0.0
     time.sleep(delay + jitter)
 
 
@@ -814,14 +1046,19 @@ def _fetch_scanner_daily_bars(
     *,
     pacer: _RequestPacer,
 ) -> pd.DataFrame:
+    max_attempts = _env_int(
+        "SCANNER_FETCH_MAX_ATTEMPTS",
+        SCANNER_FETCH_MAX_ATTEMPTS,
+        minimum=1,
+    )
     last_error: Exception | None = None
-    for attempt in range(max(1, SCANNER_FETCH_MAX_ATTEMPTS)):
+    for attempt in range(max(1, max_attempts)):
         pacer.wait_turn()
         try:
             return fetch_stock_daily_bars(ticker, start_date)
         except Exception as exc:
             last_error = exc
-            if attempt >= SCANNER_FETCH_MAX_ATTEMPTS - 1:
+            if attempt >= max_attempts - 1:
                 break
             _backoff_sleep(attempt)
     if last_error is not None:
@@ -834,14 +1071,19 @@ def _fetch_scanner_intraday_quote(
     *,
     pacer: _RequestPacer,
 ) -> dict[str, Any] | None:
+    max_attempts = _env_int(
+        "SCANNER_FETCH_MAX_ATTEMPTS",
+        SCANNER_FETCH_MAX_ATTEMPTS,
+        minimum=1,
+    )
     last_error: Exception | None = None
-    for attempt in range(max(1, SCANNER_FETCH_MAX_ATTEMPTS)):
+    for attempt in range(max(1, max_attempts)):
         pacer.wait_turn()
         try:
             return fetch_stock_intraday_quote(ticker)
         except Exception as exc:
             last_error = exc
-            if attempt >= SCANNER_FETCH_MAX_ATTEMPTS - 1:
+            if attempt >= max_attempts - 1:
                 break
             _backoff_sleep(attempt)
     if last_error is not None:
@@ -907,6 +1149,50 @@ def _select_scanner_universe(
         if col not in selected.columns:
             selected[col] = pd.NA
     return selected[STOCK_UNIVERSE_COLUMNS]
+
+
+def _validate_scanner_shard_config(shard_index: int | None, shard_count: int | None) -> tuple[int | None, int]:
+    if shard_count is None:
+        normalized_shard_count = SCANNER_DEFAULT_SHARD_COUNT
+    else:
+        normalized_shard_count = int(shard_count)
+    if normalized_shard_count < 1:
+        raise ValueError(f"scanner_shard_count must be >= 1, got {normalized_shard_count}.")
+
+    if normalized_shard_count == 1:
+        return None, 1
+
+    if shard_index is None:
+        raise ValueError("scanner_shard_index must be provided when scanner_shard_count > 1.")
+
+    normalized_shard_index = int(shard_index)
+    if normalized_shard_index < 0 or normalized_shard_index >= normalized_shard_count:
+        raise ValueError(
+            f"scanner_shard_index must be in [0, {normalized_shard_count - 1}], got {normalized_shard_index}."
+        )
+    return normalized_shard_index, normalized_shard_count
+
+
+def _apply_scanner_shard(
+    universe: pd.DataFrame,
+    *,
+    shard_index: int | None,
+    shard_count: int,
+) -> pd.DataFrame:
+    if universe.empty:
+        return universe
+    if shard_count <= 1:
+        return universe
+    if shard_index is None:
+        raise ValueError("scanner_shard_index is required when scanner_shard_count > 1.")
+
+    ranked = universe.sort_values("ticker").reset_index(drop=True)
+    mask = ranked.index.to_series().mod(shard_count) == int(shard_index)
+    sharded = ranked.loc[mask].reset_index(drop=True)
+    for col in STOCK_UNIVERSE_COLUMNS:
+        if col not in sharded.columns:
+            sharded[col] = pd.NA
+    return sharded[STOCK_UNIVERSE_COLUMNS]
 
 
 def _load_sp500_ticker_set() -> set[str]:
@@ -986,20 +1272,11 @@ def _empty_scanner_signal_row(
     metadata: dict[str, Any],
     status: str,
     status_message: str,
+    error_type: str = "",
+    error_provider: str = "",
+    error_retryable: bool = False,
 ) -> dict[str, Any]:
-    row: dict[str, Any] = {column: pd.NA for column in SCANNER_SIGNAL_COLUMNS}
-    bool_columns = [
-        "bullish_alignment_active",
-        "bullish_alignment_triggered_today",
-        "recovery_close_cross_sma50_today",
-        "recovery_three_bullish_candles_today",
-        "recovery_momentum_triggered_today",
-        "ambush_trend_bullish_active",
-        "ambush_near_ma100_active",
-        "ambush_near_ma200_active",
-        "ambush_squat_active",
-        "ambush_squat_triggered_today",
-    ]
+    row: dict[str, Any] = {column: pd.NA for column in [*SCANNER_SIGNAL_COLUMNS, *ERROR_DIAGNOSTIC_COLUMNS]}
     row.update(
         {
             "ticker": ticker,
@@ -1015,7 +1292,13 @@ def _empty_scanner_signal_row(
             "last_updated_utc": now_iso,
         }
     )
-    for col in bool_columns:
+    _apply_error_diagnostics(
+        row,
+        error_type=error_type,
+        error_provider=error_provider,
+        error_retryable=error_retryable,
+    )
+    for col in SCANNER_BOOL_COLUMNS:
         row[col] = False
     return row
 
@@ -1027,14 +1310,15 @@ def _compute_scanner_signals(
     thesis_frame: pd.DataFrame,
     start_date: str,
     now_iso: str,
+    previous_scanner_signals: pd.DataFrame | None = None,
     non_watchlist_intraday_quotes: int = SCANNER_DEFAULT_NON_WATCHLIST_INTRADAY_QUOTES,
     scanner_workers: int = SCANNER_DEFAULT_PARALLEL_WORKERS,
     scanner_daily_requests_per_second: float = SCANNER_DEFAULT_DAILY_REQUESTS_PER_SECOND,
     scanner_intraday_requests_per_second: float = SCANNER_DEFAULT_INTRADAY_REQUESTS_PER_SECOND,
     scanner_progress_log_every: int = SCANNER_DEFAULT_PROGRESS_LOG_EVERY,
 ) -> pd.DataFrame:
-    del watchlist, thesis_frame, non_watchlist_intraday_quotes, scanner_intraday_requests_per_second
-    expected_cols = [*SCANNER_SIGNAL_COLUMNS, "last_updated_utc"]
+    del watchlist, thesis_frame, non_watchlist_intraday_quotes, scanner_intraday_requests_per_second, previous_scanner_signals
+    expected_cols = [*SCANNER_SIGNAL_COLUMNS, *ERROR_DIAGNOSTIC_COLUMNS, "last_updated_utc"]
     if selected_universe.empty:
         _scanner_log("No selected universe rows; scanner output is empty.")
         return pd.DataFrame(columns=expected_cols)
@@ -1043,6 +1327,36 @@ def _compute_scanner_signals(
     max_workers = max(1, int(scanner_workers))
     daily_rps = max(0.1, float(scanner_daily_requests_per_second))
     progress_every = max(1, int(scanner_progress_log_every))
+    prefetch_batch_fast = _env_int(
+        "SCANNER_YF_PREFETCH_BATCH_SIZE_FAST",
+        SCANNER_YF_BATCH_PREFETCH_SIZE_FAST,
+        minimum=1,
+    )
+    prefetch_pause_fast = _env_float(
+        "SCANNER_YF_PREFETCH_PAUSE_FAST",
+        SCANNER_YF_BATCH_PREFETCH_PAUSE_FAST,
+        minimum=0.0,
+    )
+    prefetch_batch_slow = _env_int(
+        "SCANNER_YF_PREFETCH_BATCH_SIZE_SLOW",
+        SCANNER_YF_BATCH_PREFETCH_SIZE_SLOW,
+        minimum=1,
+    )
+    prefetch_pause_slow = _env_float(
+        "SCANNER_YF_PREFETCH_PAUSE_SLOW",
+        SCANNER_YF_BATCH_PREFETCH_PAUSE_SLOW,
+        minimum=0.0,
+    )
+    circuit_prefetch_max_coverage = _env_float(
+        "SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE",
+        SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE_DEFAULT,
+        minimum=0.0,
+    )
+    circuit_probe_count = _env_int(
+        "SCANNER_CIRCUIT_PROBE_COUNT",
+        SCANNER_CIRCUIT_PROBE_COUNT_DEFAULT,
+        minimum=1,
+    )
     daily_pacer = _RequestPacer(daily_rps)
     _scanner_log(
         "Starting scanner signal computation: "
@@ -1055,27 +1369,60 @@ def _compute_scanner_signals(
         {_normalize_ticker(ticker) for ticker in selected_universe["ticker"].tolist() if _normalize_ticker(ticker)}
     )
     _scanner_log(
-        f"Prefetching Yahoo daily OHLC history in batches for {len(prefetch_tickers)} symbols "
+        f"Prefetching provider daily OHLC history in batches for {len(prefetch_tickers)} symbols "
         "(primary scanner data cache)."
     )
     yfinance_bars_prefetch = fetch_stock_daily_bars_batch_yfinance(
         prefetch_tickers,
         start_date,
-        batch_size=SCANNER_YF_BATCH_PREFETCH_SIZE_FAST,
-        pause_seconds=SCANNER_YF_BATCH_PREFETCH_PAUSE_FAST,
+        batch_size=prefetch_batch_fast,
+        pause_seconds=prefetch_pause_fast,
     )
     if not yfinance_bars_prefetch and len(prefetch_tickers) >= 25:
         _scanner_log(
-            "Yahoo OHLC prefetch returned zero symbols; retrying with smaller batches/slower pacing "
-            f"(batch_size={SCANNER_YF_BATCH_PREFETCH_SIZE_SLOW}, pause_s={SCANNER_YF_BATCH_PREFETCH_PAUSE_SLOW:.1f})."
+            "Provider OHLC prefetch returned zero symbols; retrying with smaller batches/slower pacing "
+            f"(batch_size={prefetch_batch_slow}, pause_s={prefetch_pause_slow:.1f})."
         )
         yfinance_bars_prefetch = fetch_stock_daily_bars_batch_yfinance(
             prefetch_tickers,
             start_date,
-            batch_size=SCANNER_YF_BATCH_PREFETCH_SIZE_SLOW,
-            pause_seconds=SCANNER_YF_BATCH_PREFETCH_PAUSE_SLOW,
+            batch_size=prefetch_batch_slow,
+            pause_seconds=prefetch_pause_slow,
         )
-    _scanner_log(f"Yahoo daily OHLC prefetch ready: cached_symbols={len(yfinance_bars_prefetch)}.")
+    initial_prefetch_hits = len(yfinance_bars_prefetch)
+    missing_prefetch_tickers = sorted([ticker for ticker in prefetch_tickers if ticker not in yfinance_bars_prefetch])
+    if missing_prefetch_tickers and initial_prefetch_hits > 0:
+        _scanner_log(
+            "Provider OHLC prefetch missing symbols; retrying missing subset with slower pacing "
+            f"(missing={len(missing_prefetch_tickers)}, "
+            f"batch_size={prefetch_batch_slow}, "
+            f"pause_s={prefetch_pause_slow:.1f})."
+        )
+        missing_prefetch_retry = fetch_stock_daily_bars_batch_yfinance(
+            missing_prefetch_tickers,
+            start_date,
+            batch_size=prefetch_batch_slow,
+            pause_seconds=prefetch_pause_slow,
+        )
+        if missing_prefetch_retry:
+            yfinance_bars_prefetch.update(missing_prefetch_retry)
+    elif missing_prefetch_tickers and initial_prefetch_hits == 0:
+        _scanner_log(
+            "Provider OHLC prefetch yielded zero symbols; skipping missing-symbol retry to avoid redundant "
+            "rate-limit churn."
+        )
+
+    prefetch_total = len(prefetch_tickers)
+    prefetch_hits = len(yfinance_bars_prefetch)
+    prefetch_coverage = (float(prefetch_hits) / float(prefetch_total)) if prefetch_total else 1.0
+    if prefetch_total > 0 and prefetch_coverage < SCANNER_YF_PREFETCH_DEGRADED_COVERAGE:
+        _scanner_log(
+            "Provider prefetch coverage is degraded; scanner will continue with direct per-symbol fetches and "
+            "surface hard fetch errors for misses "
+            f"(coverage={prefetch_coverage:.1%}, "
+            f"threshold={SCANNER_YF_PREFETCH_DEGRADED_COVERAGE:.0%})."
+        )
+    _scanner_log(f"Provider daily OHLC prefetch ready: cached_symbols={len(yfinance_bars_prefetch)}.")
 
     def _get_scanner_daily_bars(ticker: str) -> pd.DataFrame:
         prefetched = yfinance_bars_prefetch.get(ticker)
@@ -1116,12 +1463,16 @@ def _compute_scanner_signals(
         try:
             daily_bars = _get_scanner_daily_bars(ticker)
         except Exception as exc:
+            error_type, error_provider, error_retryable = _classify_fetch_exception(exc)
             return _empty_scanner_signal_row(
                 ticker=ticker,
                 now_iso=now_iso,
                 metadata=metadata,
                 status="fetch_error",
                 status_message=f"Failed to fetch daily OHLC history: {exc}",
+                error_type=error_type,
+                error_provider=error_provider,
+                error_retryable=error_retryable,
             )
 
         try:
@@ -1135,14 +1486,34 @@ def _compute_scanner_signals(
                 is_etf=bool(metadata["is_etf"]),
             )
             row["last_updated_utc"] = now_iso
+            if str(row.get("status", "")).strip() == "fetch_error":
+                _apply_error_diagnostics(
+                    row,
+                    error_type=ERROR_TYPE_FETCH_ERROR,
+                    error_provider="unknown",
+                    error_retryable=False,
+                )
+            elif str(row.get("status", "")).strip() == "compute_error":
+                _apply_error_diagnostics(
+                    row,
+                    error_type=ERROR_TYPE_COMPUTE_ERROR,
+                    error_provider="pipeline",
+                    error_retryable=False,
+                )
+            else:
+                _apply_error_diagnostics(row, **_default_error_diagnostics())
             return row
         except Exception as exc:
+            error_type, error_provider, error_retryable = _classify_fetch_exception(exc)
             return _empty_scanner_signal_row(
                 ticker=ticker,
                 now_iso=now_iso,
                 metadata=metadata,
                 status="compute_error",
                 status_message=f"Failed to compute scanner signals: {exc}",
+                error_type=ERROR_TYPE_COMPUTE_ERROR if error_type == ERROR_TYPE_FETCH_ERROR else error_type,
+                error_provider=error_provider or "pipeline",
+                error_retryable=error_retryable,
             )
 
     rows: list[dict[str, Any]] = []
@@ -1183,14 +1554,65 @@ def _compute_scanner_signals(
 
     effective_workers = min(max_workers, max(1, total_jobs))
     _scanner_log(f"Executing {total_jobs} scanner jobs with workers={effective_workers}.")
+
+    jobs_to_process = list(jobs)
+    if (
+        prefetch_total > 0
+        and prefetch_coverage <= circuit_prefetch_max_coverage
+        and len(jobs_to_process) >= circuit_probe_count
+    ):
+        probe_jobs = jobs_to_process[:circuit_probe_count]
+        remaining_jobs = jobs_to_process[circuit_probe_count:]
+        probe_rows: list[dict[str, Any]] = []
+        _scanner_log(
+            "Running scanner circuit-breaker probe "
+            f"(prefetch_coverage={prefetch_coverage:.1%}, probe_count={len(probe_jobs)})."
+        )
+        for job in probe_jobs:
+            row = _process_scanner_job(job)
+            rows.append(row)
+            probe_rows.append(row)
+            _log_progress(row)
+        if probe_rows and all(_is_rate_limited_error_row(row) for row in probe_rows):
+            provider_counts = (
+                pd.Series([str(row.get("error_provider", "")).strip() for row in probe_rows if str(row.get("error_provider", "")).strip()])
+                .value_counts()
+            )
+            provider = str(provider_counts.index[0]) if not provider_counts.empty else "unknown"
+            _scanner_log(
+                "Scanner circuit breaker triggered: prefetch degraded and probe rows were all rate-limited; "
+                f"remaining_jobs={len(remaining_jobs)}, provider={provider}."
+            )
+            for job in remaining_jobs:
+                ticker = str(job.get("ticker", ""))
+                metadata = dict(job.get("metadata", {}))
+                row = _empty_scanner_signal_row(
+                    ticker=ticker,
+                    now_iso=now_iso,
+                    metadata=metadata,
+                    status="fetch_error",
+                    status_message=(
+                        "Circuit breaker: prefetch coverage was near-zero and initial direct fetches were "
+                        "rate-limited; skipped remaining symbols for this shard."
+                    ),
+                    error_type=ERROR_TYPE_RATE_LIMITED,
+                    error_provider=provider,
+                    error_retryable=True,
+                )
+                rows.append(row)
+                _log_progress(row)
+            jobs_to_process = []
+        else:
+            jobs_to_process = remaining_jobs
+
     if effective_workers == 1:
-        for job in jobs:
+        for job in jobs_to_process:
             row = _process_scanner_job(job)
             rows.append(row)
             _log_progress(row)
     else:
         with ThreadPoolExecutor(max_workers=effective_workers) as executor:
-            future_to_job = {executor.submit(_process_scanner_job, job): job for job in jobs}
+            future_to_job = {executor.submit(_process_scanner_job, job): job for job in jobs_to_process}
             for future in as_completed(future_to_job):
                 job = future_to_job[future]
                 ticker = str(job.get("ticker", ""))
@@ -1204,6 +1626,9 @@ def _compute_scanner_signals(
                         metadata=metadata,
                         status="compute_error",
                         status_message=f"Unhandled scanner worker error: {exc}",
+                        error_type=ERROR_TYPE_COMPUTE_ERROR,
+                        error_provider="pipeline",
+                        error_retryable=False,
                     )
                 rows.append(row)
                 _log_progress(row)
@@ -1212,6 +1637,12 @@ def _compute_scanner_signals(
     for col in expected_cols:
         if col not in frame.columns:
             frame[col] = pd.NA
+    if "error_retryable" in frame.columns:
+        frame["error_retryable"] = frame["error_retryable"].map(_coerce_bool_flag)
+    if "error_type" in frame.columns:
+        frame["error_type"] = frame["error_type"].fillna("").astype(str)
+    if "error_provider" in frame.columns:
+        frame["error_provider"] = frame["error_provider"].fillna("").astype(str)
 
     status_series = frame["status"].fillna("").astype(str)
     ok_count = int((status_series == "ok").sum())
@@ -1231,7 +1662,8 @@ def _compute_scanner_signals(
         "Scanner execution summary: "
         f"tickers={len(frame)}, workers={effective_workers}, "
         f"daily_rps={daily_rps:.2f}, "
-        f"ok={ok_count}, fetch_error={fetch_error_count}, compute_error={compute_error_count}, "
+        f"ok={ok_count}, "
+        f"fetch_error={fetch_error_count}, compute_error={compute_error_count}, "
         f"triggered_today={int(trigger_count)}, elapsed_s={elapsed_total_seconds:.1f}"
     )
 
@@ -1263,8 +1695,11 @@ def _empty_stock_signal_row(
     now_iso: str,
     status: str,
     status_message: str,
+    error_type: str = "",
+    error_provider: str = "",
+    error_retryable: bool = False,
 ) -> dict[str, Any]:
-    row: dict[str, Any] = {column: pd.NA for column in STOCK_SIGNAL_COLUMNS}
+    row: dict[str, Any] = {column: pd.NA for column in [*STOCK_SIGNAL_COLUMNS, *ERROR_DIAGNOSTIC_COLUMNS]}
     row.update(
         {
             "ticker": ticker,
@@ -1277,22 +1712,28 @@ def _empty_stock_signal_row(
             "relative_strength_reasons": "not_available",
         }
     )
+    _apply_error_diagnostics(
+        row,
+        error_type=error_type,
+        error_provider=error_provider,
+        error_retryable=error_retryable,
+    )
 
-    bool_columns = [
-        "rs_structural_divergence",
-        "rs_trend_down",
-        "rs_negative_alpha",
-        "relative_strength_weak",
-        *STOCK_TRIGGER_COLUMNS,
-    ]
-    for trigger_col in bool_columns:
+    for trigger_col in STOCK_BOOL_COLUMNS:
         row[trigger_col] = False
     return row
 
 
-def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso: str) -> pd.DataFrame:
+def _compute_watchlist_signals(
+    watchlist: pd.DataFrame,
+    start_date: str,
+    now_iso: str,
+    *,
+    previous_stock_signals: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    del previous_stock_signals
     if watchlist.empty:
-        return pd.DataFrame(columns=[*STOCK_SIGNAL_COLUMNS, "last_updated_utc"])
+        return pd.DataFrame(columns=[*STOCK_SIGNAL_COLUMNS, *ERROR_DIAGNOSTIC_COLUMNS, "last_updated_utc"])
 
     prefetch_tickers = sorted(
         {
@@ -1300,7 +1741,26 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
             *watchlist["benchmark"].map(_normalize_benchmark).tolist(),
         }
     )
+    watchlist_circuit_prefetch_max_coverage = _env_float(
+        "WATCHLIST_CIRCUIT_PREFETCH_MAX_COVERAGE",
+        WATCHLIST_CIRCUIT_PREFETCH_MAX_COVERAGE_DEFAULT,
+        minimum=0.0,
+    )
+    watchlist_circuit_probe_count = _env_int(
+        "WATCHLIST_CIRCUIT_PROBE_COUNT",
+        WATCHLIST_CIRCUIT_PROBE_COUNT_DEFAULT,
+        minimum=1,
+    )
     yfinance_daily_prefetch = fetch_stock_daily_history_batch_yfinance(prefetch_tickers, start_date)
+    prefetch_total = len(prefetch_tickers)
+    prefetch_hits = len(yfinance_daily_prefetch)
+    prefetch_coverage = (float(prefetch_hits) / float(prefetch_total)) if prefetch_total else 1.0
+    degraded_watchlist_prefetch = prefetch_total > 0 and prefetch_coverage < STOCK_YF_PREFETCH_DEGRADED_COVERAGE
+    if degraded_watchlist_prefetch:
+        print(
+            "Warning: watchlist provider prefetch coverage is degraded "
+            f"({prefetch_coverage:.1%}); proceeding with direct fetches and surfacing fetch errors."
+        )
 
     def _get_watchlist_daily_history(ticker: str) -> pd.Series:
         prefetched = yfinance_daily_prefetch.get(ticker)
@@ -1310,6 +1770,13 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
 
     benchmark_history: dict[str, pd.Series | None] = {}
     benchmark_intraday: dict[str, dict[str, Any] | None] = {}
+    batched_intraday_quotes: dict[str, dict[str, Any]] = {}
+    try:
+        batched_intraday_quotes = fetch_stock_intraday_quotes_batch(prefetch_tickers)
+    except Exception as exc:
+        print(f"Warning: failed to fetch batched intraday quotes: {exc}")
+        batched_intraday_quotes = {}
+
     for benchmark in sorted(watchlist["benchmark"].astype(str).unique()):
         benchmark_symbol = _normalize_benchmark(benchmark)
         try:
@@ -1318,44 +1785,101 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
             print(f"Warning: failed to fetch benchmark history for {benchmark_symbol}: {exc}")
             benchmark_history[benchmark_symbol] = None
 
-        try:
-            benchmark_intraday[benchmark_symbol] = fetch_stock_intraday_quote(benchmark_symbol)
-        except Exception as exc:
-            print(f"Warning: failed to fetch benchmark intraday quote for {benchmark_symbol}: {exc}")
-            benchmark_intraday[benchmark_symbol] = None
+        benchmark_quote = batched_intraday_quotes.get(benchmark_symbol)
+        if benchmark_quote is None:
+            try:
+                benchmark_quote = fetch_stock_intraday_quote(benchmark_symbol)
+            except Exception as exc:
+                print(f"Warning: failed to fetch benchmark intraday quote for {benchmark_symbol}: {exc}")
+                benchmark_quote = None
+        benchmark_intraday[benchmark_symbol] = benchmark_quote
 
     rows: list[dict[str, Any]] = []
+    probe_rows: list[dict[str, Any]] = []
+    probe_outcomes: list[bool] = []
+    circuit_triggered = False
+    circuit_provider = "unknown"
     for _, watch_row in watchlist.iterrows():
         ticker = _normalize_ticker(watch_row.get("ticker", ""))
         benchmark_ticker = _normalize_benchmark(watch_row.get("benchmark", DEFAULT_STOCK_BENCHMARK))
         if not ticker:
             continue
 
-        try:
-            daily_close = _get_watchlist_daily_history(ticker)
-        except Exception as exc:
+        if circuit_triggered:
             rows.append(
                 _empty_stock_signal_row(
                     ticker=ticker,
                     benchmark_ticker=benchmark_ticker,
                     now_iso=now_iso,
                     status="fetch_error",
-                    status_message=f"Failed to fetch daily history: {exc}",
+                    status_message=(
+                        "Circuit breaker: prefetch coverage was near-zero and initial direct fetches were "
+                        "rate-limited; skipped remaining watchlist symbols."
+                    ),
+                    error_type=ERROR_TYPE_RATE_LIMITED,
+                    error_provider=circuit_provider,
+                    error_retryable=True,
                 )
             )
             continue
 
-        latest_quote: dict[str, Any] | None = None
-        latest_price: float | None = None
         try:
-            latest_quote = fetch_stock_intraday_quote(ticker)
-            if latest_quote is not None:
-                latest_price = float(latest_quote["price"])
-                quote_source = str(latest_quote.get("source", "")).strip()
-                if quote_source:
-                    daily_close.attrs["intraday_source"] = quote_source
+            daily_close = _get_watchlist_daily_history(ticker)
         except Exception as exc:
-            print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
+            error_type, error_provider, error_retryable = _classify_fetch_exception(exc)
+            fetch_error_row = _empty_stock_signal_row(
+                ticker=ticker,
+                benchmark_ticker=benchmark_ticker,
+                now_iso=now_iso,
+                status="fetch_error",
+                status_message=f"Failed to fetch daily history: {exc}",
+                error_type=error_type,
+                error_provider=error_provider,
+                error_retryable=error_retryable,
+            )
+            rows.append(fetch_error_row)
+            if (
+                prefetch_total > 0
+                and prefetch_coverage <= watchlist_circuit_prefetch_max_coverage
+                and len(probe_outcomes) < watchlist_circuit_probe_count
+            ):
+                probe_rows.append(fetch_error_row)
+                probe_outcomes.append(_is_rate_limited_error_row(fetch_error_row))
+                if (
+                    len(probe_outcomes) >= watchlist_circuit_probe_count
+                    and all(probe_outcomes)
+                ):
+                    providers = pd.Series(
+                        [
+                            str(probe_row.get("error_provider", "")).strip()
+                            for probe_row in probe_rows
+                            if str(probe_row.get("error_provider", "")).strip()
+                        ]
+                    )
+                    circuit_provider = str(providers.value_counts().index[0]) if not providers.empty else "unknown"
+                    circuit_triggered = True
+                    print(
+                        "Warning: watchlist circuit breaker triggered after repeated rate-limited fetch errors; "
+                        f"remaining symbols will be marked fetch_error (provider={circuit_provider})."
+                    )
+            continue
+
+        latest_quote: dict[str, Any] | None = batched_intraday_quotes.get(ticker)
+        latest_price: float | None = None
+        if latest_quote is None:
+            try:
+                latest_quote = fetch_stock_intraday_quote(ticker)
+            except Exception as exc:
+                print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
+                latest_quote = None
+        if latest_quote is not None:
+            try:
+                latest_price = float(latest_quote["price"])
+            except Exception:
+                latest_price = None
+            quote_source = str(latest_quote.get("source", "")).strip()
+            if quote_source:
+                daily_close.attrs["intraday_source"] = quote_source
 
         try:
             benchmark_close = benchmark_history.get(benchmark_ticker)
@@ -1380,8 +1904,31 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
                 if quote_day_change_pct is not None and pd.notna(quote_day_change_pct):
                     row["day_change_pct"] = float(quote_day_change_pct)
             row["last_updated_utc"] = now_iso
+            if str(row.get("status", "")).strip() == "fetch_error":
+                _apply_error_diagnostics(
+                    row,
+                    error_type=ERROR_TYPE_FETCH_ERROR,
+                    error_provider="unknown",
+                    error_retryable=False,
+                )
+            elif str(row.get("status", "")).strip() == "compute_error":
+                _apply_error_diagnostics(
+                    row,
+                    error_type=ERROR_TYPE_COMPUTE_ERROR,
+                    error_provider="pipeline",
+                    error_retryable=False,
+                )
+            else:
+                _apply_error_diagnostics(row, **_default_error_diagnostics())
             rows.append(row)
+            if (
+                prefetch_total > 0
+                and prefetch_coverage <= watchlist_circuit_prefetch_max_coverage
+                and len(probe_outcomes) < watchlist_circuit_probe_count
+            ):
+                probe_outcomes.append(False)
         except Exception as exc:
+            error_type, error_provider, error_retryable = _classify_fetch_exception(exc)
             rows.append(
                 _empty_stock_signal_row(
                     ticker=ticker,
@@ -1389,14 +1936,29 @@ def _compute_watchlist_signals(watchlist: pd.DataFrame, start_date: str, now_iso
                     now_iso=now_iso,
                     status="compute_error",
                     status_message=f"Failed to compute stock signals: {exc}",
+                    error_type=ERROR_TYPE_COMPUTE_ERROR if error_type == ERROR_TYPE_FETCH_ERROR else error_type,
+                    error_provider=error_provider or "pipeline",
+                    error_retryable=error_retryable,
                 )
             )
+            if (
+                prefetch_total > 0
+                and prefetch_coverage <= watchlist_circuit_prefetch_max_coverage
+                and len(probe_outcomes) < watchlist_circuit_probe_count
+            ):
+                probe_outcomes.append(False)
 
     frame = pd.DataFrame(rows)
-    expected_cols = [*STOCK_SIGNAL_COLUMNS, "last_updated_utc"]
+    expected_cols = [*STOCK_SIGNAL_COLUMNS, *ERROR_DIAGNOSTIC_COLUMNS, "last_updated_utc"]
     for col in expected_cols:
         if col not in frame.columns:
             frame[col] = pd.NA
+    if "error_retryable" in frame.columns:
+        frame["error_retryable"] = frame["error_retryable"].map(_coerce_bool_flag)
+    if "error_type" in frame.columns:
+        frame["error_type"] = frame["error_type"].fillna("").astype(str)
+    if "error_provider" in frame.columns:
+        frame["error_provider"] = frame["error_provider"].fillna("").astype(str)
     return frame[expected_cols].sort_values("ticker").reset_index(drop=True)
 
 
@@ -1864,28 +2426,59 @@ def _run_stock_pipeline(
     start_date: str,
     now_iso: str,
     *,
+    run_watchlist: bool = True,
     run_scanner: bool = True,
     scanner_max_tickers: int | None = None,
     scanner_all_tickers: bool = False,
     scanner_include_etfs: bool = SCANNER_DEFAULT_INCLUDE_ETFS,
+    scanner_shard_index: int | None = None,
+    scanner_shard_count: int | None = None,
     scanner_workers: int | None = None,
     scanner_daily_requests_per_second: float | None = None,
     scanner_intraday_requests_per_second: float | None = None,
     scanner_progress_log_every: int | None = None,
 ) -> None:
-    previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
     watchlist = _load_or_initialize_watchlist(STOCK_WATCHLIST_PATH)
-    stock_signals = _compute_watchlist_signals(watchlist=watchlist, start_date=start_date, now_iso=now_iso)
-    _write_csv(STOCK_SIGNALS_PATH, stock_signals)
-    stock_events = _detect_new_stock_trigger_events(previous_stock_signals, stock_signals)
-    _update_signal_event_history(
-        SIGNAL_EVENTS_PATH,
-        macro_events=[],
-        stock_events=stock_events,
-        scanner_events=[],
-        now_iso=now_iso,
+    configured_stock_fail_max_error_ratio = _env_float(
+        "STOCK_FAIL_MAX_ERROR_RATIO",
+        STOCK_FAIL_MAX_ERROR_RATIO_DEFAULT,
+        minimum=0.0,
     )
-    _notify_stock_trigger_events(stock_events, now_iso)
+    configured_scanner_fail_max_error_ratio = _env_float(
+        "SCANNER_FAIL_MAX_ERROR_RATIO",
+        SCANNER_FAIL_MAX_ERROR_RATIO_DEFAULT,
+        minimum=0.0,
+    )
+    configured_scanner_insufficient_data_alert_ratio = _env_float(
+        "SCANNER_INSUFFICIENT_DATA_ALERT_RATIO",
+        SCANNER_INSUFFICIENT_DATA_ALERT_RATIO_DEFAULT,
+        minimum=0.0,
+    )
+    if run_watchlist:
+        previous_stock_signals = _load_previous_stock_signals(STOCK_SIGNALS_PATH)
+        stock_signals = _compute_watchlist_signals(
+            watchlist=watchlist,
+            start_date=start_date,
+            now_iso=now_iso,
+            previous_stock_signals=previous_stock_signals,
+        )
+        _write_csv(STOCK_SIGNALS_PATH, stock_signals)
+        _enforce_error_budget(
+            stock_signals,
+            name="watchlist",
+            max_error_ratio=configured_stock_fail_max_error_ratio,
+        )
+        stock_events = _detect_new_stock_trigger_events(previous_stock_signals, stock_signals)
+        _update_signal_event_history(
+            SIGNAL_EVENTS_PATH,
+            macro_events=[],
+            stock_events=stock_events,
+            scanner_events=[],
+            now_iso=now_iso,
+        )
+        _notify_stock_trigger_events(stock_events, now_iso)
+    else:
+        _scanner_log("Watchlist refresh skipped (scanner-only mode).")
 
     if not run_scanner:
         return
@@ -1935,16 +2528,34 @@ def _run_stock_pipeline(
         scanner_progress_log_every if scanner_progress_log_every is not None else SCANNER_DEFAULT_PROGRESS_LOG_EVERY,
         minimum=1,
     )
+    configured_scanner_shard_count = _env_int(
+        "SCANNER_SHARD_COUNT",
+        scanner_shard_count if scanner_shard_count is not None else SCANNER_DEFAULT_SHARD_COUNT,
+        minimum=1,
+    )
+    configured_scanner_shard_index = scanner_shard_index
+    env_scanner_shard_index = _env_optional_int("SCANNER_SHARD_INDEX")
+    if env_scanner_shard_index is not None:
+        configured_scanner_shard_index = env_scanner_shard_index
+    configured_scanner_shard_index, configured_scanner_shard_count = _validate_scanner_shard_config(
+        configured_scanner_shard_index,
+        configured_scanner_shard_count,
+    )
     _scanner_log(
         "Stock scanner run configuration: "
         f"all_tickers={configured_all_tickers}, "
         f"max_non_watchlist_tickers={configured_max_tickers if configured_max_tickers is not None else 'ALL'}, "
         f"include_etfs={configured_include_etfs}, "
+        f"shard_index={configured_scanner_shard_index if configured_scanner_shard_index is not None else 0}, "
+        f"shard_count={configured_scanner_shard_count}, "
         f"workers={configured_scanner_workers}, "
         f"daily_rps={configured_scanner_daily_rps:.2f}, "
         f"intraday_rps={configured_scanner_intraday_rps:.2f}, "
         f"progress_log_every={configured_scanner_progress_log_every}, "
-        f"non_watchlist_intraday_quotes={non_watchlist_intraday_quotes}"
+        f"non_watchlist_intraday_quotes={non_watchlist_intraday_quotes}, "
+        f"stock_fail_max_error_ratio={configured_stock_fail_max_error_ratio:.2f}, "
+        f"scanner_fail_max_error_ratio={configured_scanner_fail_max_error_ratio:.2f}, "
+        f"scanner_insufficient_data_alert_ratio={configured_scanner_insufficient_data_alert_ratio:.2f}"
     )
     universe = _load_or_refresh_stock_universe(STOCK_UNIVERSE_PATH, watchlist=watchlist, now_iso=now_iso)
     _scanner_log(f"Loaded scanner universe rows={len(universe)}.")
@@ -1955,6 +2566,11 @@ def _run_stock_pipeline(
         max_tickers=configured_max_tickers,
         include_etfs=configured_include_etfs,
     )
+    selected_universe = _apply_scanner_shard(
+        selected_universe,
+        shard_index=configured_scanner_shard_index,
+        shard_count=configured_scanner_shard_count,
+    )
     _scanner_log(f"Selected scanner universe rows={len(selected_universe)}.")
     thesis_frame = _load_or_initialize_scanner_thesis(SCANNER_THESIS_PATH, watchlist=watchlist)
     _scanner_log(f"Loaded scanner thesis rows={len(thesis_frame)} (deprecated for scanner ranking; file retained).")
@@ -1964,6 +2580,7 @@ def _run_stock_pipeline(
         thesis_frame=thesis_frame,
         start_date=start_date,
         now_iso=now_iso,
+        previous_scanner_signals=previous_scanner_signals,
         non_watchlist_intraday_quotes=non_watchlist_intraday_quotes,
         scanner_workers=configured_scanner_workers,
         scanner_daily_requests_per_second=configured_scanner_daily_rps,
@@ -1972,6 +2589,25 @@ def _run_stock_pipeline(
     )
     _write_csv(STOCK_UNIVERSE_PATH, universe)
     _write_csv(SCANNER_SIGNALS_PATH, scanner_signals)
+    _enforce_error_budget(
+        scanner_signals,
+        name="scanner",
+        max_error_ratio=configured_scanner_fail_max_error_ratio,
+    )
+    if configured_scanner_shard_count <= 1:
+        _notify_scanner_insufficient_data_alert(
+            previous_scanner_signals=previous_scanner_signals,
+            scanner_signals=scanner_signals,
+            now_iso=now_iso,
+            alert_ratio_threshold=configured_scanner_insufficient_data_alert_ratio,
+            context_label="full_scanner_run",
+        )
+    else:
+        _scanner_log(
+            "Skipping scanner insufficient_data coverage alert on partial shard run: "
+            f"shard_index={configured_scanner_shard_index if configured_scanner_shard_index is not None else 0}, "
+            f"shard_count={configured_scanner_shard_count}."
+        )
     scanner_events = _detect_new_scanner_trigger_events(previous_scanner_signals, scanner_signals)
     _update_signal_event_history(
         SIGNAL_EVENTS_PATH,
@@ -1998,10 +2634,13 @@ def run_pipeline(
     lookback_years: int = DEFAULT_LOOKBACK_YEARS,
     run_macro: bool = True,
     run_stock: bool = True,
+    run_watchlist: bool = True,
     run_scanner: bool = True,
     scanner_max_tickers: int | None = None,
     scanner_all_tickers: bool = False,
     scanner_include_etfs: bool = SCANNER_DEFAULT_INCLUDE_ETFS,
+    scanner_shard_index: int | None = None,
+    scanner_shard_count: int | None = None,
     scanner_workers: int | None = None,
     scanner_daily_requests_per_second: float | None = None,
     scanner_intraday_requests_per_second: float | None = None,
@@ -2021,10 +2660,13 @@ def run_pipeline(
         _run_stock_pipeline(
             start_date=start_date,
             now_iso=now_iso,
+            run_watchlist=run_watchlist,
             run_scanner=run_scanner,
             scanner_max_tickers=scanner_max_tickers,
             scanner_all_tickers=scanner_all_tickers,
             scanner_include_etfs=scanner_include_etfs,
+            scanner_shard_index=scanner_shard_index,
+            scanner_shard_count=scanner_shard_count,
             scanner_workers=scanner_workers,
             scanner_daily_requests_per_second=scanner_daily_requests_per_second,
             scanner_intraday_requests_per_second=scanner_intraday_requests_per_second,
@@ -2081,25 +2723,50 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Emit scanner progress log every N completed ticker jobs.",
     )
+    parser.add_argument(
+        "--scanner-shard-index",
+        type=int,
+        default=None,
+        help="0-based shard index for scanner universe partitioning.",
+    )
+    parser.add_argument(
+        "--scanner-shard-count",
+        type=int,
+        default=None,
+        help="Total number of scanner shards for partitioned runs.",
+    )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--macro-only", action="store_true", help="Run only macro data fetch/signal steps")
     mode_group.add_argument("--stock-only", action="store_true", help="Run only stock watchlist steps")
+    mode_group.add_argument(
+        "--scanner-only",
+        action="store_true",
+        help="Run only broad scanner steps (skip watchlist refresh).",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    run_macro = not args.stock_only
+    if args.scanner_only and args.skip_scanner:
+        raise ValueError("--scanner-only cannot be combined with --skip-scanner.")
+
+    run_macro = not args.stock_only and not args.scanner_only
     run_stock = not args.macro_only
+    run_watchlist = not args.scanner_only
+    run_scanner = True if args.scanner_only else not args.skip_scanner
     run_pipeline(
         start_date=args.start_date,
         lookback_years=args.lookback_years,
         run_macro=run_macro,
         run_stock=run_stock,
-        run_scanner=not args.skip_scanner,
+        run_watchlist=run_watchlist,
+        run_scanner=run_scanner,
         scanner_max_tickers=args.scanner_max_tickers,
         scanner_all_tickers=args.scanner_all_tickers,
         scanner_include_etfs=args.scanner_include_etfs,
+        scanner_shard_index=args.scanner_shard_index,
+        scanner_shard_count=args.scanner_shard_count,
         scanner_workers=args.scanner_workers,
         scanner_daily_requests_per_second=args.scanner_daily_rps,
         scanner_intraday_requests_per_second=args.scanner_intraday_rps,

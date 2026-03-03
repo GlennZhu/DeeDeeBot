@@ -10,8 +10,8 @@ Dashboard and pipeline that track:
 
 - Python
 - `pandas_datareader` (FRED macro data)
-- `pandas_datareader` Stooq feed (stock daily history)
-- Stooq quote endpoint (stock intraday quote at run time)
+- Charles Schwab Market Data API (daily history + batched quotes)
+- `pandas_datareader` Stooq + Yahoo (`yfinance`) fallback provider
 - GitHub Actions (scheduled cache refresh)
 - Streamlit (dashboard UI)
 
@@ -22,7 +22,7 @@ Dashboard and pipeline that track:
 - `src/signals.py`: macro signal logic and thresholds
 - `src/stock_signals.py`: stock signal logic (SMA/RSI/divergence/relative strength)
 - `src/stock_scanner.py`: broad-universe EOD scanner logic (3 exact signal triggers)
-- `src/data_fetch.py`: FRED and Stooq fetchers (daily + intraday quote endpoint)
+- `src/data_fetch.py`: FRED + market-data fetchers (Schwab, Stooq, Yahoo fallback)
 - `data/raw/*.csv`: per-metric historical macro series cache
 - `data/derived/metric_snapshot.csv`: latest macro values
 - `data/derived/signals_latest.csv`: latest macro signal states
@@ -68,8 +68,9 @@ For each watched ticker, the pipeline checks:
 - The MA200 trend precondition uses daily-close SMA trend (not intraday-adjusted SMA) to reduce alert flicker.
 
 Alerts are sent to Discord on first trigger (`false -> true` versus previous run), and when negative signals clear (`true -> false` for risk/exit macro and stock conditions).
-Daily indicator history (SMA/RSI) comes from Stooq; run-time `price` uses Stooq intraday quote when available.
+Daily indicator history and run-time prices use the configured market-data provider (`MARKET_DATA_PROVIDER`), with optional public fallback.
 `stock_signals_latest.csv` also includes `intraday_quote_timestamp_utc` and `intraday_quote_age_seconds` so quote staleness is explicit.
+Both stock and scanner outputs now include `error_type`, `error_provider`, and `error_retryable` so hard failures can be routed explicitly.
 `signal_events_7d.csv` captures both `triggered` and `cleared` transitions and is pruned to the last 7 days by event timestamp on every pipeline run.
 You can browse this history in the Streamlit `Signal History (7D)` tab.
 
@@ -153,6 +154,7 @@ python -m src.pipeline --stock-only --scanner-all-tickers --scanner-include-etfs
 python -m src.pipeline --stock-only --scanner-max-tickers 200 --scanner-workers 8 --scanner-daily-rps 4.0
 python -m src.pipeline --stock-only --scanner-max-tickers 200 --scanner-progress-log-every 10
 python -m src.pipeline --stock-only --skip-scanner
+python -m src.pipeline --scanner-only --scanner-all-tickers --scanner-shard-index 0 --scanner-shard-count 6
 # tuned local scanner runner
 ./scripts/run_scanner_tuned.sh
 ```
@@ -166,6 +168,25 @@ Optional environment knobs:
 - `SCANNER_PARALLEL_WORKERS` (default `8`)
 - `SCANNER_DAILY_REQUESTS_PER_SECOND` (default `4.0`)
 - `SCANNER_PROGRESS_LOG_EVERY` (default `25`)
+- `SCANNER_SHARD_INDEX` (optional; requires `SCANNER_SHARD_COUNT > 1`)
+- `SCANNER_SHARD_COUNT` (default `1`)
+- `SCANNER_YF_PREFETCH_BATCH_SIZE_FAST` (default `100`)
+- `SCANNER_YF_PREFETCH_PAUSE_FAST` (default `0.4`)
+- `SCANNER_YF_PREFETCH_BATCH_SIZE_SLOW` (default `25`)
+- `SCANNER_YF_PREFETCH_PAUSE_SLOW` (default `2.0`)
+- `MARKET_DATA_PROVIDER` (`auto`, `schwab`, `public`; default `auto`)
+- `SCHWAB_ACCESS_TOKEN` (optional if using refresh-token flow)
+- `SCHWAB_REFRESH_TOKEN`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET` (optional token refresh flow)
+- `SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST` (default `200`)
+- `SCANNER_FETCH_MAX_ATTEMPTS` (default `3`)
+- `SCANNER_FETCH_BACKOFF_SECONDS` (default `0.4`)
+- `SCANNER_CIRCUIT_PREFETCH_MAX_COVERAGE` (default `0.05`)
+- `SCANNER_CIRCUIT_PROBE_COUNT` (default `6`)
+- `WATCHLIST_CIRCUIT_PREFETCH_MAX_COVERAGE` (default `0.05`)
+- `WATCHLIST_CIRCUIT_PROBE_COUNT` (default `4`)
+- `STOCK_FAIL_MAX_ERROR_RATIO` (default `0.80`)
+- `SCANNER_FAIL_MAX_ERROR_RATIO` (default `0.60`)
+- `SCANNER_INSUFFICIENT_DATA_ALERT_RATIO` (default `0.10`; alert-only threshold, not a hard failure)
 
 ## Run Dashboard
 
@@ -174,6 +195,7 @@ streamlit run app.py
 ```
 
 The dashboard uses cached CSV files only (no live API calls on page load).
+The `Market Scanner` tab shows latest scanner quality counts (`rows total`, `ok`, `insufficient_data`, and hard-error rows from `error_type` / `error_provider`) plus last update time in ET.
 
 ## Tests
 
@@ -196,6 +218,17 @@ Notifications:
 
 Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only --skip-scanner` to keep watchlist alerts fresh intraday.
 
-Workflow `update_stock_scanner_daily.yml` runs once per weekday after regular U.S. market close (**5:10 PM Eastern**, DST-safe via dual UTC cron + ET runtime guard). It executes `python -m src.pipeline --stock-only --scanner-all-tickers`, which scans the full `S&P 500 + Nasdaq 500 proxy + watchlist` scope.
+Workflow `update_stock_scanner_daily.yml` runs once per weekday at fixed UTC time (`10 22 * * 1-5`), with no DST guard. This is `5:10 PM` Eastern during standard time and `6:10 PM` Eastern during daylight time. It uses a 3-phase sharded flow:
+
+- Pre-shard baseline refresh (`--stock-only --skip-scanner`)
+- Six sequential scanner shards (`--scanner-only --scanner-all-tickers --scanner-shard-index i --scanner-shard-count 6`) with lower per-run RPS/workers and inter-shard wait windows
+- Merge step (`scripts/merge_scanner_shards.py`) that rebuilds `scanner_signals_latest.csv` and updates scanner events in `signal_events_7d.csv`
+
+The workflow is wired to fail fast when stock/scanner error ratios exceed configured budgets and now expects Schwab credentials in repository secrets:
+
+- `SCHWAB_ACCESS_TOKEN` (or refresh-token trio below)
+- `SCHWAB_REFRESH_TOKEN`
+- `SCHWAB_CLIENT_ID`
+- `SCHWAB_CLIENT_SECRET`
 
 `workflow_dispatch` remains available for both workflows.
