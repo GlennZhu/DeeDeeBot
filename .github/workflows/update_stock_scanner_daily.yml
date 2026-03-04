@@ -273,12 +273,57 @@ jobs:
 
       - name: Commit changed scanner CSV files
         run: |
-          if [[ -n "$(git status --porcelain data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv data/derived/stock_universe.csv data/derived/scanner_signals_latest.csv data/derived/scanner_thesis_tags.csv data/derived/signal_events_7d.csv)" ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/derived/stock_signals_latest.csv data/derived/stock_watchlist.csv data/derived/stock_universe.csv data/derived/scanner_signals_latest.csv data/derived/scanner_thesis_tags.csv data/derived/signal_events_7d.csv
-            git commit -m "chore(data): refresh sharded stock scanner cache"
-            git push
-          else
+          set -euo pipefail
+
+          branch="${GITHUB_REF_NAME:-main}"
+          files=(
+            data/derived/stock_signals_latest.csv
+            data/derived/stock_watchlist.csv
+            data/derived/stock_universe.csv
+            data/derived/scanner_signals_latest.csv
+            data/derived/scanner_thesis_tags.csv
+            data/derived/signal_events_7d.csv
+          )
+
+          if [[ -z "$(git status --porcelain "${files[@]}")" ]]; then
             echo "No scanner cache changes detected."
+            exit 0
           fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          snapshot_dir="$(mktemp -d)"
+          trap 'rm -rf "$snapshot_dir"' EXIT
+          for file in "${files[@]}"; do
+            mkdir -p "${snapshot_dir}/$(dirname "$file")"
+            cp "$file" "${snapshot_dir}/${file}"
+          done
+
+          for attempt in 1 2 3 4 5; do
+            echo "Push attempt ${attempt}/5"
+            git fetch origin "$branch"
+            git reset --hard "origin/$branch"
+
+            for file in "${files[@]}"; do
+              cp "${snapshot_dir}/${file}" "$file"
+            done
+
+            if [[ -z "$(git status --porcelain "${files[@]}")" ]]; then
+              echo "No scanner cache changes remain after syncing with origin/${branch}."
+              exit 0
+            fi
+
+            git add "${files[@]}"
+            git commit -m "chore(data): refresh sharded stock scanner cache"
+
+            if git push origin "HEAD:${branch}"; then
+              echo "Scanner cache push succeeded."
+              exit 0
+            fi
+
+            echo "Push was rejected because origin/${branch} advanced; retrying."
+          done
+
+          echo "ERROR: unable to push scanner cache after multiple retries."
+          exit 1
