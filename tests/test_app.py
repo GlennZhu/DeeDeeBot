@@ -53,11 +53,12 @@ def test_main_clears_cache_on_first_load(monkeypatch) -> None:
     fake_st = _FakeStreamlit()
     monkeypatch.setattr(app, "st", fake_st)
     calls = _patch_main_renderers(monkeypatch)
+    monkeypatch.setattr(app, "_compute_dashboard_data_signature", lambda: (("data.csv", 1, 128),))
 
     app.main()
 
     assert fake_st.cache_data.clear_calls == 1
-    assert fake_st.session_state["_cache_refreshed_on_load"] is True
+    assert fake_st.session_state[app.APP_DATA_SIGNATURE_SESSION_KEY] == (("data.csv", 1, 128),)
     assert calls == ["macro:15Y", "stock", "scanner", "history"]
 
 
@@ -65,9 +66,32 @@ def test_main_clears_cache_only_once_per_session(monkeypatch) -> None:
     fake_st = _FakeStreamlit()
     monkeypatch.setattr(app, "st", fake_st)
     calls = _patch_main_renderers(monkeypatch)
+    monkeypatch.setattr(app, "_compute_dashboard_data_signature", lambda: (("data.csv", 1, 128),))
 
     app.main()
     app.main()
 
     assert fake_st.cache_data.clear_calls == 1
     assert calls == ["macro:15Y", "stock", "scanner", "history"] * 2
+
+
+def test_main_clears_cache_when_data_signature_changes(monkeypatch) -> None:
+    fake_st = _FakeStreamlit()
+    monkeypatch.setattr(app, "st", fake_st)
+    calls = _patch_main_renderers(monkeypatch)
+
+    signatures = iter(
+        [
+            (("data.csv", 1, 128),),
+            (("data.csv", 1, 128),),
+            (("data.csv", 2, 256),),
+        ]
+    )
+    monkeypatch.setattr(app, "_compute_dashboard_data_signature", lambda: next(signatures))
+
+    app.main()
+    app.main()
+    app.main()
+
+    assert fake_st.cache_data.clear_calls == 2
+    assert calls == ["macro:15Y", "stock", "scanner", "history"] * 3
