@@ -219,6 +219,9 @@ jobs:
       - scanner-shards
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    concurrency:
+      group: data-cache-main-writers-${{ github.ref_name }}
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -12,6 +12,9 @@ permissions:
 jobs:
   update-data:
     runs-on: ubuntu-latest
+    concurrency:
+      group: data-cache-main-writers-${{ github.ref_name }}
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,19 +59,70 @@ jobs:
         id: commit_data
         if: steps.guard.outputs.run_pipeline == 'true'
         run: |
-          if [[ -n "$(git status --porcelain data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv data/derived/signal_events_7d.csv)" ]]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add data/raw data/derived/metric_snapshot.csv data/derived/signals_latest.csv data/derived/signal_events_7d.csv
-            git commit -m "chore(data): update macro dashboard cache"
-            git push
-            echo "data_changed=true" >> "$GITHUB_OUTPUT"
-            echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          else
+          set -euo pipefail
+
+          branch="${GITHUB_REF_NAME:-main}"
+          paths=(
+            data/raw
+            data/derived/metric_snapshot.csv
+            data/derived/signals_latest.csv
+            data/derived/signal_events_7d.csv
+          )
+
+          if [[ -z "$(git status --porcelain "${paths[@]}")" ]]; then
             echo "No data changes detected."
             echo "data_changed=false" >> "$GITHUB_OUTPUT"
             echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          snapshot_dir="$(mktemp -d)"
+          trap 'rm -rf "$snapshot_dir"' EXIT
+          for path in "${paths[@]}"; do
+            if [[ -e "$path" ]]; then
+              mkdir -p "${snapshot_dir}/$(dirname "$path")"
+              cp -a "$path" "${snapshot_dir}/${path}"
+            fi
+          done
+
+          for attempt in 1 2 3 4 5; do
+            echo "Push attempt ${attempt}/5"
+            git fetch origin "$branch"
+            git reset --hard "origin/$branch"
+
+            for path in "${paths[@]}"; do
+              rm -rf "$path"
+              if [[ -e "${snapshot_dir}/${path}" ]]; then
+                mkdir -p "$(dirname "$path")"
+                cp -a "${snapshot_dir}/${path}" "$path"
+              fi
+            done
+
+            if [[ -z "$(git status --porcelain "${paths[@]}")" ]]; then
+              echo "No data changes remain after syncing with origin/${branch}."
+              echo "data_changed=false" >> "$GITHUB_OUTPUT"
+              echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            git add -A "${paths[@]}"
+            git commit -m "chore(data): update macro dashboard cache"
+
+            if git push origin "HEAD:${branch}"; then
+              echo "data_changed=true" >> "$GITHUB_OUTPUT"
+              echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              echo "Macro cache push succeeded."
+              exit 0
+            fi
+
+            echo "Push was rejected because origin/${branch} advanced; retrying."
+          done
+
+          echo "ERROR: unable to push macro cache after multiple retries."
+          exit 1
 
       - name: Notify Discord
         if: always() && steps.guard.outputs.run_pipeline == 'true'
