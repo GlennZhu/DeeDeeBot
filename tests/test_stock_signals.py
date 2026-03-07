@@ -178,6 +178,113 @@ def test_detect_bullish_rsi_divergence_true_and_false_controls() -> None:
     assert not stock_signals.detect_bullish_rsi_divergence(prices, rsi_not_bullish, left=3, right=3)
 
 
+def test_v2_filters_out_weak_bearish_divergence_signal() -> None:
+    prices = _series(
+        [
+            100,
+            102,
+            104,
+            106,
+            108,
+            110,
+            112,
+            109,
+            106,
+            110,
+            113,
+            109,
+            106,
+            104,
+            103,
+            102,
+            101,
+            100,
+        ]
+    )
+    rsi = _series(
+        [
+            45,
+            50,
+            55,
+            60,
+            65,
+            70,
+            74,
+            68,
+            62,
+            66,
+            72,
+            64,
+            58,
+            55,
+            53,
+            50,
+            48,
+            46,
+        ]
+    )
+
+    assert stock_signals.detect_bearish_rsi_divergence(prices, rsi, left=3, right=3)
+    assert not stock_signals.detect_bearish_rsi_divergence_v2(prices, rsi)
+
+
+def test_v2_filters_out_weak_bullish_divergence_signal() -> None:
+    prices = _series(
+        [
+            120,
+            118,
+            116,
+            114,
+            112,
+            110,
+            108,
+            111,
+            114,
+            110,
+            107,
+            111,
+            114,
+            116,
+            118,
+            119,
+        ]
+    )
+    rsi = _series(
+        [
+            58,
+            54,
+            50,
+            46,
+            42,
+            36,
+            30,
+            35,
+            40,
+            36,
+            32,
+            38,
+            44,
+            49,
+            53,
+            56,
+        ]
+    )
+
+    assert stock_signals.detect_bullish_rsi_divergence(prices, rsi, left=3, right=3)
+    assert not stock_signals.detect_bullish_rsi_divergence_v2(prices, rsi)
+
+
+def test_compute_stock_signal_row_uses_v2_divergence_functions(monkeypatch) -> None:
+    closes = _series([100.0 + i for i in range(260)])
+
+    monkeypatch.setattr(stock_signals, "detect_bullish_rsi_divergence_v2", lambda price, rsi: True)
+    monkeypatch.setattr(stock_signals, "detect_bearish_rsi_divergence_v2", lambda price, rsi: False)
+
+    row = stock_signals.compute_stock_signal_row("TEST", closes)
+    assert row["rsi_bullish_divergence"] is True
+    assert row["rsi_bearish_divergence"] is False
+
+
 def test_compute_stock_signal_row_insufficient_data() -> None:
     closes = _series([100.0 + i for i in range(150)])
     row = stock_signals.compute_stock_signal_row("TEST", closes)

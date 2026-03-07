@@ -50,6 +50,11 @@ For each watched ticker, the pipeline checks:
 3. Bearish RSI divergence:
 - Latest two confirmed price highs `P1`, `P2` with corresponding RSI highs `R1`, `R2`
 - Trigger when `P2 > P1` and `R2 < R1`
+- Live watchlist now uses tuned **v2** divergence filters:
+  - requires nearby RSI pivots (no same-bar fallback),
+  - minimum pivot separation,
+  - minimum price/RSI delta between pivots,
+  - RSI regime guardrails (bearish peaks should be elevated, bullish troughs should be depressed).
 
 4. Comparative relative strength vs benchmark (`benchmark` per ticker in watchlist):
 - Structural divergence: benchmark `> MA50` while stock `< MA50`
@@ -142,6 +147,19 @@ pip install -r requirements.txt
 ```bash
 python -m src.pipeline
 ```
+
+## Evaluate RSI Divergence Variants
+
+Use backtesting to compare v1 baseline against v2 candidates and emit a recommendation:
+
+```bash
+.venv/bin/python scripts/evaluate_rsi_divergence.py
+```
+
+Outputs:
+- `data/derived/rsi_divergence_eval_summary.csv` (train/holdout metrics per candidate)
+- `data/derived/rsi_divergence_eval_events.csv` (event-level backtest rows)
+- `data/derived/rsi_divergence_recommendation.json` (recommended params + rationale)
 
 Optional flags:
 

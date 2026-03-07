@@ -1,0 +1,23 @@
+{
+  "recommended_candidate": "v2_candidate_early",
+  "rationale": "Promoting v2_candidate_early: holdout score improved from -2.1882 to 0.2109 with 18 events.",
+  "params": {
+    "lookback": 100,
+    "left": 3,
+    "right": 3,
+    "max_distance": 2,
+    "min_price_move_pct": 0.01,
+    "min_rsi_delta": 2.5,
+    "min_pivot_separation": 5,
+    "require_rsi_pivot_match": true,
+    "bearish_min_rsi_peak": 54.0,
+    "bullish_max_rsi_trough": 46.0
+  },
+  "context": {
+    "start_date": "2019-01-01",
+    "horizon_bars": 10,
+    "target_move_pct": 0.03,
+    "train_ratio": 0.7,
+    "evaluated_tickers": 8
+  }
+}

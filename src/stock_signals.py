@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,6 +13,38 @@ SQUAT_NEAR_ZONE_MIN_GAP = 0.02
 SQUAT_NEAR_ZONE_MAX_GAP = 0.03
 SQUAT_CRITICAL_SUPPORT_MIN_GAP = -0.02
 SQUAT_CRITICAL_SUPPORT_MAX_GAP = 0.01
+
+
+@dataclass(frozen=True)
+class RsiDivergenceParams:
+    """Configuration for RSI divergence detection rules."""
+
+    lookback: int = 120
+    left: int = 3
+    right: int = 3
+    max_distance: int = 3
+    min_price_move_pct: float = 0.0
+    min_rsi_delta: float = 0.0
+    min_pivot_separation: int = 1
+    require_rsi_pivot_match: bool = False
+    bearish_min_rsi_peak: float | None = None
+    bullish_max_rsi_trough: float | None = None
+
+
+RSI_DIVERGENCE_V1_PARAMS = RsiDivergenceParams()
+RSI_DIVERGENCE_V2_PARAMS = RsiDivergenceParams(
+    lookback=100,
+    left=3,
+    right=3,
+    max_distance=2,
+    min_price_move_pct=0.01,
+    min_rsi_delta=2.5,
+    min_pivot_separation=5,
+    require_rsi_pivot_match=True,
+    bearish_min_rsi_peak=54.0,
+    bullish_max_rsi_trough=46.0,
+)
+ACTIVE_RSI_DIVERGENCE_VERSION = "v2"
 
 STOCK_TRIGGER_COLUMNS = [
     "entry_bullish_alignment",
@@ -108,6 +141,13 @@ def _safe_lt(lhs: Any, rhs: Any) -> bool:
     return _is_valid_number(lhs) and _is_valid_number(rhs) and float(lhs) < float(rhs)
 
 
+def _price_move_pct(first: float, second: float) -> float:
+    base = abs(float(first))
+    if base == 0:
+        return float("inf")
+    return abs(float(second) - float(first)) / base
+
+
 def _find_swing_high_positions(series: pd.Series, left: int = 3, right: int = 3) -> list[int]:
     """Find swing-high bar positions in a numeric series."""
     if series.empty:
@@ -163,6 +203,7 @@ def _rsi_peak_for_price_peak(
     rsi_series: pd.Series,
     rsi_peak_positions: list[int],
     max_distance: int = 3,
+    allow_fallback_to_same_bar: bool = True,
 ) -> float | None:
     close_peaks = [
         idx
@@ -173,7 +214,7 @@ def _rsi_peak_for_price_peak(
         selected = min(close_peaks, key=lambda idx: abs(idx - peak_pos))
         return float(rsi_series.iloc[selected])
 
-    if 0 <= peak_pos < len(rsi_series) and pd.notna(rsi_series.iloc[peak_pos]):
+    if allow_fallback_to_same_bar and 0 <= peak_pos < len(rsi_series) and pd.notna(rsi_series.iloc[peak_pos]):
         return float(rsi_series.iloc[peak_pos])
     return None
 
@@ -183,6 +224,7 @@ def _rsi_trough_for_price_trough(
     rsi_series: pd.Series,
     rsi_trough_positions: list[int],
     max_distance: int = 3,
+    allow_fallback_to_same_bar: bool = True,
 ) -> float | None:
     close_troughs = [
         idx
@@ -193,21 +235,28 @@ def _rsi_trough_for_price_trough(
         selected = min(close_troughs, key=lambda idx: abs(idx - trough_pos))
         return float(rsi_series.iloc[selected])
 
-    if 0 <= trough_pos < len(rsi_series) and pd.notna(rsi_series.iloc[trough_pos]):
+    if allow_fallback_to_same_bar and 0 <= trough_pos < len(rsi_series) and pd.notna(rsi_series.iloc[trough_pos]):
         return float(rsi_series.iloc[trough_pos])
     return None
 
 
-def detect_bullish_rsi_divergence(
+def detect_bullish_rsi_divergence_with_params(
     price_series: pd.Series,
     rsi_series: pd.Series,
-    lookback: int = 120,
-    left: int = 3,
-    right: int = 3,
+    params: RsiDivergenceParams,
 ) -> bool:
-    """Detect bullish RSI divergence using the two latest confirmed price lows."""
+    """Detect bullish RSI divergence with configurable strictness."""
     if price_series.empty or rsi_series.empty:
         return False
+
+    lookback = max(1, int(params.lookback))
+    left = max(1, int(params.left))
+    right = max(1, int(params.right))
+    max_distance = max(0, int(params.max_distance))
+    min_price_move_pct = max(0.0, float(params.min_price_move_pct))
+    min_rsi_delta = max(0.0, float(params.min_rsi_delta))
+    min_pivot_separation = max(1, int(params.min_pivot_separation))
+    max_rsi_trough = params.bullish_max_rsi_trough
 
     price_recent = price_series.iloc[-lookback:].astype(float)
     rsi_recent = rsi_series.reindex(price_recent.index).astype(float)
@@ -219,28 +268,56 @@ def detect_bullish_rsi_divergence(
         return False
 
     p1_pos, p2_pos = price_troughs[-2], price_troughs[-1]
+    if (p2_pos - p1_pos) < min_pivot_separation:
+        return False
+
     p1 = float(price_recent.iloc[p1_pos])
     p2 = float(price_recent.iloc[p2_pos])
+    if not p2 < p1:
+        return False
+    if _price_move_pct(p1, p2) < min_price_move_pct:
+        return False
 
     rsi_troughs = _find_swing_low_positions(rsi_recent, left=left, right=right)
-    r1 = _rsi_trough_for_price_trough(p1_pos, rsi_recent, rsi_troughs)
-    r2 = _rsi_trough_for_price_trough(p2_pos, rsi_recent, rsi_troughs)
+    r1 = _rsi_trough_for_price_trough(
+        p1_pos,
+        rsi_recent,
+        rsi_troughs,
+        max_distance=max_distance,
+        allow_fallback_to_same_bar=not params.require_rsi_pivot_match,
+    )
+    r2 = _rsi_trough_for_price_trough(
+        p2_pos,
+        rsi_recent,
+        rsi_troughs,
+        max_distance=max_distance,
+        allow_fallback_to_same_bar=not params.require_rsi_pivot_match,
+    )
     if r1 is None or r2 is None:
         return False
+    if max_rsi_trough is not None and max(r1, r2) > float(max_rsi_trough):
+        return False
 
-    return p2 < p1 and r2 > r1
+    return r2 > r1 and (r2 - r1) >= min_rsi_delta
 
 
-def detect_bearish_rsi_divergence(
+def detect_bearish_rsi_divergence_with_params(
     price_series: pd.Series,
     rsi_series: pd.Series,
-    lookback: int = 120,
-    left: int = 3,
-    right: int = 3,
+    params: RsiDivergenceParams,
 ) -> bool:
-    """Detect bearish RSI divergence using the two latest confirmed price highs."""
+    """Detect bearish RSI divergence with configurable strictness."""
     if price_series.empty or rsi_series.empty:
         return False
+
+    lookback = max(1, int(params.lookback))
+    left = max(1, int(params.left))
+    right = max(1, int(params.right))
+    max_distance = max(0, int(params.max_distance))
+    min_price_move_pct = max(0.0, float(params.min_price_move_pct))
+    min_rsi_delta = max(0.0, float(params.min_rsi_delta))
+    min_pivot_separation = max(1, int(params.min_pivot_separation))
+    min_rsi_peak = params.bearish_min_rsi_peak
 
     price_recent = price_series.iloc[-lookback:].astype(float)
     rsi_recent = rsi_series.reindex(price_recent.index).astype(float)
@@ -252,16 +329,93 @@ def detect_bearish_rsi_divergence(
         return False
 
     p1_pos, p2_pos = price_peaks[-2], price_peaks[-1]
-    p1 = float(price_recent.iloc[p1_pos])
-    p2 = float(price_recent.iloc[p2_pos])
-
-    rsi_peaks = _find_swing_high_positions(rsi_recent, left=left, right=right)
-    r1 = _rsi_peak_for_price_peak(p1_pos, rsi_recent, rsi_peaks)
-    r2 = _rsi_peak_for_price_peak(p2_pos, rsi_recent, rsi_peaks)
-    if r1 is None or r2 is None:
+    if (p2_pos - p1_pos) < min_pivot_separation:
         return False
 
-    return p2 > p1 and r2 < r1
+    p1 = float(price_recent.iloc[p1_pos])
+    p2 = float(price_recent.iloc[p2_pos])
+    if not p2 > p1:
+        return False
+    if _price_move_pct(p1, p2) < min_price_move_pct:
+        return False
+
+    rsi_peaks = _find_swing_high_positions(rsi_recent, left=left, right=right)
+    r1 = _rsi_peak_for_price_peak(
+        p1_pos,
+        rsi_recent,
+        rsi_peaks,
+        max_distance=max_distance,
+        allow_fallback_to_same_bar=not params.require_rsi_pivot_match,
+    )
+    r2 = _rsi_peak_for_price_peak(
+        p2_pos,
+        rsi_recent,
+        rsi_peaks,
+        max_distance=max_distance,
+        allow_fallback_to_same_bar=not params.require_rsi_pivot_match,
+    )
+    if r1 is None or r2 is None:
+        return False
+    if min_rsi_peak is not None and max(r1, r2) < float(min_rsi_peak):
+        return False
+
+    return r2 < r1 and (r1 - r2) >= min_rsi_delta
+
+
+def detect_bullish_rsi_divergence(
+    price_series: pd.Series,
+    rsi_series: pd.Series,
+    lookback: int = 120,
+    left: int = 3,
+    right: int = 3,
+) -> bool:
+    """Detect bullish RSI divergence using v1 baseline settings."""
+    params = RsiDivergenceParams(
+        lookback=lookback,
+        left=left,
+        right=right,
+        max_distance=3,
+        min_price_move_pct=0.0,
+        min_rsi_delta=0.0,
+        min_pivot_separation=1,
+        require_rsi_pivot_match=False,
+        bearish_min_rsi_peak=None,
+        bullish_max_rsi_trough=None,
+    )
+    return detect_bullish_rsi_divergence_with_params(price_series, rsi_series, params=params)
+
+
+def detect_bearish_rsi_divergence(
+    price_series: pd.Series,
+    rsi_series: pd.Series,
+    lookback: int = 120,
+    left: int = 3,
+    right: int = 3,
+) -> bool:
+    """Detect bearish RSI divergence using v1 baseline settings."""
+    params = RsiDivergenceParams(
+        lookback=lookback,
+        left=left,
+        right=right,
+        max_distance=3,
+        min_price_move_pct=0.0,
+        min_rsi_delta=0.0,
+        min_pivot_separation=1,
+        require_rsi_pivot_match=False,
+        bearish_min_rsi_peak=None,
+        bullish_max_rsi_trough=None,
+    )
+    return detect_bearish_rsi_divergence_with_params(price_series, rsi_series, params=params)
+
+
+def detect_bullish_rsi_divergence_v2(price_series: pd.Series, rsi_series: pd.Series) -> bool:
+    """Detect bullish RSI divergence using tuned v2 settings."""
+    return detect_bullish_rsi_divergence_with_params(price_series, rsi_series, params=RSI_DIVERGENCE_V2_PARAMS)
+
+
+def detect_bearish_rsi_divergence_v2(price_series: pd.Series, rsi_series: pd.Series) -> bool:
+    """Detect bearish RSI divergence using tuned v2 settings."""
+    return detect_bearish_rsi_divergence_with_params(price_series, rsi_series, params=RSI_DIVERGENCE_V2_PARAMS)
 
 
 def _relative_strength_signals(
@@ -416,8 +570,8 @@ def compute_stock_signal_row(
     exit_price_below_sma50 = _safe_lt(price, sma50)
     exit_death_cross_50_lt_200 = _safe_lt(sma50, sma200)
     exit_rsi_overbought = _is_valid_number(rsi14) and float(rsi14) > 80.0
-    rsi_bullish_divergence = detect_bullish_rsi_divergence(evaluated, rsi14_series)
-    rsi_bearish_divergence = detect_bearish_rsi_divergence(evaluated, rsi14_series)
+    rsi_bullish_divergence = detect_bullish_rsi_divergence_v2(evaluated, rsi14_series)
+    rsi_bearish_divergence = detect_bearish_rsi_divergence_v2(evaluated, rsi14_series)
 
     squat_bull_market_precondition = _safe_gt(daily_sma200, prev_sma200) or _safe_gt(daily_sma50, daily_sma200)
     squat_price_dropping = _safe_lt(price, prev_price)
