@@ -22,19 +22,34 @@ jobs:
       - name: Evaluate Eastern schedule guard
         id: guard
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule || '' }}
         run: |
           should_run="false"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          reason="schedule_mismatch"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             should_run="true"
+            reason="workflow_dispatch"
           else
             local_dow="$(TZ=America/New_York date +%u)"
             local_hm="$(TZ=America/New_York date +%H:%M)"
-            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_hm" == "16:30" ]]; then
+            local_offset="$(TZ=America/New_York date +%z)"
+            expected_schedule=""
+
+            case "$local_offset" in
+              -0400) expected_schedule="30 20 * * 1-5" ;;
+              -0500) expected_schedule="30 21 * * 1-5" ;;
+            esac
+
+            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && -n "$expected_schedule" && "$EVENT_SCHEDULE" == "$expected_schedule" ]]; then
               should_run="true"
+              reason="matched_schedule_for_offset"
             fi
           fi
 
-          echo "Eastern weekday=${local_dow:-manual}, time=${local_hm:-manual}"
+          echo "Eastern weekday=${local_dow:-manual}, time=${local_hm:-manual}, offset=${local_offset:-manual}, event_schedule=${EVENT_SCHEDULE:-manual}, reason=${reason}"
           echo "run_pipeline=$should_run" >> "$GITHUB_OUTPUT"
 
       - name: Setup Python
@@ -238,4 +253,4 @@ jobs:
       - name: Skip non-target schedule run
         if: steps.guard.outputs.run_pipeline != 'true'
         run: |
-          echo "Skipping run: not 4:30 PM Eastern weekday."
+          echo "Skipping run: schedule does not match current Eastern UTC offset."

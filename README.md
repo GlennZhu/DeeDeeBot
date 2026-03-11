@@ -263,7 +263,7 @@ pytest
 
 ## GitHub Actions Schedule
 
-Workflow `update_data.yml` is triggered by two UTC cron candidates and guarded at runtime to run only when local Eastern time is exactly **4:30 PM on weekdays**:
+Workflow `update_data.yml` is triggered by two UTC cron candidates. A runtime guard picks the cron expression that matches the current Eastern UTC offset (EST/EDT), so macro refresh runs once per weekday around **4:30 PM ET** without depending on exact job start minute:
 
 - `30 20 * * 1-5`
 - `30 21 * * 1-5`
