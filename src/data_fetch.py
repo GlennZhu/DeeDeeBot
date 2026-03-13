@@ -47,6 +47,11 @@ SCHWAB_QUOTES_PATH = "/marketdata/v1/quotes"
 SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST = 200
 SCHWAB_REQUEST_TIMEOUT_SECONDS = 12
 SCHWAB_YEARS_LOOKBACK = 20
+FRED_GRAPH_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+FRED_API_OBSERVATIONS_URL = "https://api.stlouisfed.org/fred/series/observations"
+FRED_REQUEST_TIMEOUT_SECONDS = 45
+FRED_FETCH_MAX_ATTEMPTS = 4
+FRED_FETCH_RETRY_BACKOFF_SECONDS = 1.0
 
 
 class MarketDataError(RuntimeError):
@@ -221,6 +226,187 @@ def _schwab_timeout_seconds() -> int:
     except ValueError:
         return SCHWAB_REQUEST_TIMEOUT_SECONDS
     return max(3, parsed)
+
+
+def _fred_timeout_seconds() -> int:
+    raw = str(os.getenv("FRED_REQUEST_TIMEOUT_SECONDS", "")).strip()
+    if not raw:
+        return FRED_REQUEST_TIMEOUT_SECONDS
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return FRED_REQUEST_TIMEOUT_SECONDS
+    return max(5, parsed)
+
+
+def _fred_max_attempts() -> int:
+    raw = str(os.getenv("FRED_FETCH_MAX_ATTEMPTS", "")).strip()
+    if not raw:
+        return FRED_FETCH_MAX_ATTEMPTS
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return FRED_FETCH_MAX_ATTEMPTS
+    return max(1, parsed)
+
+
+def _fred_retry_backoff_seconds() -> float:
+    raw = str(os.getenv("FRED_FETCH_RETRY_BACKOFF_SECONDS", "")).strip()
+    if not raw:
+        return FRED_FETCH_RETRY_BACKOFF_SECONDS
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return FRED_FETCH_RETRY_BACKOFF_SECONDS
+    return max(0.0, parsed)
+
+
+def _fred_api_key() -> str:
+    return str(os.getenv("FRED_API_KEY", "")).strip()
+
+
+def _fred_api_observations_url() -> str:
+    raw = str(os.getenv("FRED_API_OBSERVATIONS_URL", "")).strip()
+    if not raw:
+        return FRED_API_OBSERVATIONS_URL
+    return raw
+
+
+def _fred_graph_csv_url() -> str:
+    raw = str(os.getenv("FRED_GRAPH_CSV_URL", "")).strip()
+    if not raw:
+        return FRED_GRAPH_CSV_URL
+    return raw
+
+
+def _fetch_fred_series_via_api(
+    series_id: str,
+    start_date: str,
+    *,
+    api_key: str,
+    timeout_seconds: int,
+) -> pd.Series:
+    query = parse.urlencode(
+        {
+            "series_id": series_id,
+            "api_key": api_key,
+            "file_type": "json",
+            "observation_start": start_date,
+            "sort_order": "asc",
+        }
+    )
+    url = f"{_fred_api_observations_url()}?{query}"
+    req = request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": UNIVERSE_FETCH_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with request.urlopen(req, timeout=timeout_seconds) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+    except error.HTTPError as exc:
+        status = int(getattr(exc, "code", 0) or 0)
+        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        if status in {400, 401, 403, 404}:
+            raise RuntimeError(f"FRED API rejected series {series_id} request: HTTP {status} {body}") from exc
+        raise
+
+    try:
+        parsed = json.loads(payload)
+    except Exception as exc:
+        raise RuntimeError(f"FRED API returned invalid JSON for series {series_id}: {exc}") from exc
+
+    if isinstance(parsed, dict) and "error_code" in parsed:
+        raise RuntimeError(
+            f"FRED API error for series {series_id}: {parsed.get('error_message', 'unknown error')}"
+        )
+
+    observations = parsed.get("observations") if isinstance(parsed, dict) else None
+    if not isinstance(observations, list):
+        raise RuntimeError(f"FRED API observations payload missing for series {series_id}.")
+
+    dates: list[pd.Timestamp] = []
+    values: list[float] = []
+    for obs in observations:
+        if not isinstance(obs, dict):
+            continue
+        raw_date = str(obs.get("date", "")).strip()
+        raw_value = str(obs.get("value", "")).strip()
+        if not raw_date or raw_value in {"", ".", "nan", "NaN"}:
+            continue
+        parsed_date = pd.to_datetime(raw_date, errors="coerce")
+        parsed_value = pd.to_numeric(raw_value, errors="coerce")
+        if pd.isna(parsed_date) or pd.isna(parsed_value):
+            continue
+        dates.append(pd.Timestamp(parsed_date))
+        values.append(float(parsed_value))
+
+    if not values:
+        raise RuntimeError(f"No data returned from FRED API for series {series_id}.")
+
+    frame = pd.DataFrame({"date": dates, "value": values})
+    frame = frame.dropna(subset=["date", "value"]).drop_duplicates(subset=["date"], keep="last").set_index("date")
+    return _normalize_series(frame["value"], series_id)
+
+
+def _fetch_fred_series_via_graph_csv(
+    series_id: str,
+    start_date: str,
+    *,
+    timeout_seconds: int,
+) -> pd.Series:
+    query = parse.urlencode(
+        {
+            "id": series_id,
+            "cosd": start_date,
+        }
+    )
+    url = f"{_fred_graph_csv_url()}?{query}"
+    req = request.Request(
+        url,
+        headers={
+            "Accept": "text/csv",
+            "User-Agent": UNIVERSE_FETCH_USER_AGENT,
+        },
+        method="GET",
+    )
+    try:
+        with request.urlopen(req, timeout=timeout_seconds) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+    except error.HTTPError as exc:
+        status = int(getattr(exc, "code", 0) or 0)
+        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        raise RuntimeError(f"FRED graph CSV request failed for {series_id}: HTTP {status} {body}") from exc
+
+    if not payload.strip():
+        raise RuntimeError(f"FRED graph CSV returned an empty payload for series {series_id}.")
+
+    try:
+        frame = pd.read_csv(io.StringIO(payload))
+    except Exception as exc:
+        raise RuntimeError(f"FRED graph CSV returned invalid CSV for series {series_id}: {exc}") from exc
+
+    if frame.empty:
+        raise RuntimeError(f"No data returned from FRED graph CSV for series {series_id}.")
+
+    date_col = "observation_date" if "observation_date" in frame.columns else frame.columns[0]
+    if series_id in frame.columns:
+        value_col = series_id
+    elif len(frame.columns) >= 2:
+        value_col = frame.columns[1]
+    else:
+        raise RuntimeError(f"FRED graph CSV missing value column for series {series_id}.")
+
+    parsed_dates = pd.to_datetime(frame[date_col], errors="coerce")
+    parsed_values = pd.to_numeric(frame[value_col], errors="coerce")
+    out = pd.Series(parsed_values.values, index=parsed_dates, name=series_id)
+    out = out[out.index.notna()].dropna()
+    if out.empty:
+        raise RuntimeError(f"No data returned from FRED graph CSV for series {series_id}.")
+    return _normalize_series(out, series_id)
 
 
 def _schwab_base_url() -> str:
@@ -1114,10 +1300,46 @@ def fetch_stock_daily_history_batch_yfinance(
 
 def fetch_fred_series(series_id: str, start_date: str) -> pd.Series:
     """Fetch a single FRED series as a normalized pandas Series."""
-    frame = DataReader(series_id, "fred", start=start_date)
-    if frame.empty or series_id not in frame.columns:
-        raise RuntimeError(f"No data returned from FRED for series {series_id}.")
-    return _normalize_series(frame[series_id], series_id)
+    max_attempts = _fred_max_attempts()
+    timeout_seconds = _fred_timeout_seconds()
+    retry_backoff_seconds = _fred_retry_backoff_seconds()
+    api_key = _fred_api_key()
+    source_name = "FRED API" if api_key else "FRED graph CSV"
+    last_error: Exception | None = None
+
+    for attempt in range(max_attempts):
+        try:
+            if api_key:
+                return _fetch_fred_series_via_api(
+                    series_id,
+                    start_date,
+                    api_key=api_key,
+                    timeout_seconds=timeout_seconds,
+                )
+
+            return _fetch_fred_series_via_graph_csv(
+                series_id,
+                start_date,
+                timeout_seconds=timeout_seconds,
+            )
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            is_last_attempt = attempt >= (max_attempts - 1)
+            if is_last_attempt:
+                break
+            print(
+                f"Warning: {source_name} fetch failed for {series_id} "
+                f"(attempt {attempt + 1}/{max_attempts}), retrying: {exc}"
+            )
+            sleep_seconds = retry_backoff_seconds * (2**attempt)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+
+    raise RuntimeError(
+        f"Failed to fetch FRED series {series_id} from {source_name} after {max_attempts} attempts."
+    ) from last_error
 
 
 def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:

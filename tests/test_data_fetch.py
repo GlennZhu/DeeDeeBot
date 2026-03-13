@@ -26,6 +26,88 @@ class _FakeResponse:
         return False
 
 
+def test_fetch_fred_series_retries_timeout_then_succeeds(monkeypatch) -> None:
+    calls = {"count": 0}
+    sleeps: list[float] = []
+
+    def fake_fetch(series_id: str, start_date: str, *, timeout_seconds: int) -> pd.Series:
+        assert series_id == "DGS10"
+        assert start_date == "2024-01-01"
+        assert timeout_seconds == 42
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise TimeoutError("read timed out")
+        idx = pd.date_range("2026-01-01", periods=2, freq="D")
+        return pd.Series([4.1, 4.2], index=idx, name="DGS10")
+
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+    monkeypatch.setenv("FRED_REQUEST_TIMEOUT_SECONDS", "42")
+    monkeypatch.setenv("FRED_FETCH_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("FRED_FETCH_RETRY_BACKOFF_SECONDS", "0.5")
+    monkeypatch.setattr(data_fetch, "_fetch_fred_series_via_graph_csv", fake_fetch)
+    monkeypatch.setattr(data_fetch.time, "sleep", lambda seconds: sleeps.append(float(seconds)))
+
+    out = data_fetch.fetch_fred_series("DGS10", "2024-01-01")
+
+    assert calls["count"] == 2
+    assert sleeps == [0.5]
+    assert float(out.iloc[-1]) == pytest.approx(4.2)
+
+
+def test_fetch_fred_series_raises_after_exhausting_attempts(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    def fake_fetch(series_id: str, start_date: str, *, timeout_seconds: int) -> pd.Series:
+        del series_id, start_date, timeout_seconds
+        calls["count"] += 1
+        raise TimeoutError("read timed out")
+
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+    monkeypatch.setenv("FRED_FETCH_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("FRED_FETCH_RETRY_BACKOFF_SECONDS", "0")
+    monkeypatch.setattr(data_fetch, "_fetch_fred_series_via_graph_csv", fake_fetch)
+
+    with pytest.raises(RuntimeError, match="Failed to fetch FRED series DGS10 from FRED graph CSV after 2 attempts"):
+        data_fetch.fetch_fred_series("DGS10", "2024-01-01")
+
+    assert calls["count"] == 2
+
+
+def test_fetch_fred_series_uses_api_when_key_is_present(monkeypatch) -> None:
+    calls = {"count": 0}
+
+    class _ApiResponse:
+        def read(self) -> bytes:
+            return b'{"observations":[{"date":"2026-03-10","value":"4.18"},{"date":"2026-03-11","value":"4.20"},{"date":"2026-03-12","value":"."}]}'
+
+        def __enter__(self) -> "_ApiResponse":
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:  # type: ignore[no-untyped-def]
+            del exc_type, exc, tb
+            return False
+
+    def fake_urlopen(req, timeout: int = 45):
+        del timeout
+        calls["count"] += 1
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        assert "api.stlouisfed.org/fred/series/observations" in url
+        assert "series_id=DGS10" in url
+        assert "api_key=test-key" in url
+        assert "observation_start=2024-01-01" in url
+        return _ApiResponse()
+
+    monkeypatch.setenv("FRED_API_KEY", "test-key")
+    monkeypatch.setattr(data_fetch, "_fetch_fred_series_via_graph_csv", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("graph path should not be used")))
+    monkeypatch.setattr(data_fetch.request, "urlopen", fake_urlopen)
+
+    out = data_fetch.fetch_fred_series("DGS10", "2024-01-01")
+
+    assert calls["count"] == 1
+    assert out.index.strftime("%Y-%m-%d").tolist() == ["2026-03-10", "2026-03-11"]
+    assert float(out.iloc[-1]) == pytest.approx(4.2)
+
+
 def test_fetch_stock_daily_history_uses_stooq_symbol_candidates(monkeypatch) -> None:
     calls: list[str] = []
 

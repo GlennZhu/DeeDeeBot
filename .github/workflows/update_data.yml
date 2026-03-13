@@ -68,6 +68,7 @@ jobs:
         if: steps.guard.outputs.run_pipeline == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
         run: python -m src.pipeline --macro-only
 
       - name: Commit changed CSV files

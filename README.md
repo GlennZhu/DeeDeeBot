@@ -193,6 +193,10 @@ Optional environment knobs:
 - `SCANNER_YF_PREFETCH_BATCH_SIZE_SLOW` (default `25`)
 - `SCANNER_YF_PREFETCH_PAUSE_SLOW` (default `2.0`)
 - `MARKET_DATA_PROVIDER` (`auto`, `schwab`, `public`; default `auto`)
+- `FRED_API_KEY` (optional; if set, uses `api.stlouisfed.org`; otherwise uses keyless `fredgraph.csv`)
+- `FRED_REQUEST_TIMEOUT_SECONDS` (default `45`)
+- `FRED_FETCH_MAX_ATTEMPTS` (default `4`)
+- `FRED_FETCH_RETRY_BACKOFF_SECONDS` (default `1.0`)
 - `SCHWAB_ACCESS_TOKEN` (optional local override; CI scanner workflow uses refresh-token preflight)
 - `SCHWAB_REFRESH_TOKEN`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET` (optional token refresh flow)
 - `SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST` (default `200`)
@@ -273,6 +277,7 @@ It executes `python -m src.pipeline --macro-only`.
 Notifications:
 
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
+- Optionally set `FRED_API_KEY` as a GitHub repository secret to use official FRED API responses instead of keyless graph CSV.
 
 Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only --skip-scanner` to keep watchlist alerts fresh intraday.
 
