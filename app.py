@@ -123,11 +123,6 @@ SCANNER_SIGNAL_FILTER_OPTIONS: list[dict[str, str]] = [
         "trigger_col": "recovery_momentum_triggered_today",
         "active_col": "recovery_momentum_triggered_today",
     },
-    {
-        "label": "Ambush / Squat Alert",
-        "trigger_col": "ambush_squat_triggered_today",
-        "active_col": "ambush_squat_active",
-    },
 ]
 
 APP_DATA_SIGNATURE_SESSION_KEY = "_dashboard_data_signature"
@@ -489,7 +484,7 @@ def _scanner_signal_labels_for_row(row: pd.Series) -> str:
 
 def _render_scanner_signal_guide() -> None:
     with st.expander("Signal Definitions", expanded=False):
-        st.caption("Exact scanner logic implemented for the 3 EOD scanner signals.")
+        st.caption("Exact scanner logic implemented for the 2 EOD scanner signals.")
         st.markdown(
             "**Bullish Alignment Trigger**: Active when `SMA14 > SMA50` and (`SMA50 > SMA100` or `SMA50 > SMA200`). "
             "Triggered today only when active today and not active yesterday."
@@ -497,10 +492,6 @@ def _render_scanner_signal_guide() -> None:
         st.markdown(
             "**MA Recovery + Momentum Confirmation**: Triggered today when `Close > SMA50` and yesterday `Close <= SMA50`, "
             "and the last 3 candles are bullish (`Close > Open` on each day)."
-        )
-        st.markdown(
-            "**Ambush / Squat Alert**: Active when bullish trend is confirmed (`SMA50 > SMA200`) and close is within "
-            "`0% to +2%` above `SMA100` or `SMA200`. Triggered today only when the active condition turns false -> true."
         )
 
 
@@ -750,12 +741,10 @@ def _render_scanner_tab() -> None:
     trigger_cols = [
         "bullish_alignment_triggered_today",
         "recovery_momentum_triggered_today",
-        "ambush_squat_triggered_today",
     ]
     active_cols = [
         "bullish_alignment_active",
         "recovery_momentum_triggered_today",
-        "ambush_squat_active",
     ]
     scanner_signals["_any_triggered_today"] = scanner_signals[trigger_cols].any(axis=1)
     scanner_signals["_any_active"] = scanner_signals[active_cols].any(axis=1)
@@ -869,11 +858,6 @@ def _render_scanner_tab() -> None:
         "recovery_close_cross_sma50_today",
         "recovery_three_bullish_candles_today",
         "recovery_momentum_triggered_today",
-        "ambush_trend_bullish_active",
-        "ambush_near_ma100_active",
-        "ambush_near_ma200_active",
-        "ambush_squat_active",
-        "ambush_squat_triggered_today",
         "is_watchlist",
         "exchange",
         "security_name",

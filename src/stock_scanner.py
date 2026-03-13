@@ -75,10 +75,6 @@ def _gap_to_ma_pct(price: Any, ma_value: Any) -> float:
     return (float(price) - float(ma_value)) / float(ma_value)
 
 
-def _in_ambush_band(gap_pct: Any) -> bool:
-    return _is_valid_number(gap_pct) and 0.0 <= float(gap_pct) <= 0.02
-
-
 def _normalize_scanner_bars(daily_bars: pd.DataFrame) -> pd.DataFrame:
     if daily_bars is None or not isinstance(daily_bars, pd.DataFrame):
         return pd.DataFrame()
@@ -288,9 +284,6 @@ def compute_scanner_signal_row(
 
     gap_to_sma100_pct = _gap_to_ma_pct(close_now, sma100)
     gap_to_sma200_pct = _gap_to_ma_pct(close_now, sma200)
-    gap_to_sma100_prev_pct = _gap_to_ma_pct(close_prev, sma100_prev)
-    gap_to_sma200_prev_pct = _gap_to_ma_pct(close_prev, sma200_prev)
-
     bullish_alignment_active = _alignment_active(sma14, sma50, sma100, sma200)
     bullish_alignment_prev = _alignment_active(sma14_prev, sma50_prev, sma100_prev, sma200_prev)
     bullish_alignment_triggered_today = bool(bullish_alignment_active and not bullish_alignment_prev)
@@ -299,16 +292,12 @@ def compute_scanner_signal_row(
     recovery_three_bullish_candles_today = _three_bullish_candles(open_series, close_series)
     recovery_momentum_triggered_today = bool(recovery_close_cross_sma50_today and recovery_three_bullish_candles_today)
 
-    ambush_trend_bullish_active = bool(sma50 > sma200)
-    ambush_near_ma100_active = _in_ambush_band(gap_to_sma100_pct)
-    ambush_near_ma200_active = _in_ambush_band(gap_to_sma200_pct)
-    ambush_squat_active = bool(ambush_trend_bullish_active and (ambush_near_ma100_active or ambush_near_ma200_active))
-
-    ambush_trend_prev = bool(sma50_prev > sma200_prev)
-    ambush_near_ma100_prev = _in_ambush_band(gap_to_sma100_prev_pct)
-    ambush_near_ma200_prev = _in_ambush_band(gap_to_sma200_prev_pct)
-    ambush_squat_prev = bool(ambush_trend_prev and (ambush_near_ma100_prev or ambush_near_ma200_prev))
-    ambush_squat_triggered_today = bool(ambush_squat_active and not ambush_squat_prev)
+    # Ambush / Squat has been retired from the daily scanner.
+    ambush_trend_bullish_active = False
+    ambush_near_ma100_active = False
+    ambush_near_ma200_active = False
+    ambush_squat_active = False
+    ambush_squat_triggered_today = False
 
     base_row.update(
         {
@@ -337,4 +326,3 @@ def compute_scanner_signal_row(
         if col not in base_row:
             base_row[col] = pd.NA
     return base_row
-

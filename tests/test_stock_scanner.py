@@ -96,49 +96,17 @@ def test_recovery_momentum_does_not_trigger_when_price_was_already_above_sma50()
     assert row["recovery_momentum_triggered_today"] is False
 
 
-def test_ambush_squat_triggers_when_entering_band_with_bullish_trend() -> None:
+def test_ambush_squat_signal_is_disabled_for_scanner() -> None:
+    # This setup previously triggered ambush/squat; scanner now hard-disables it.
     closes = [80.0] * 210 + [120.0] * 48 + [130.0, 101.0]
     row = stock_scanner.compute_scanner_signal_row("TEST", _bars(closes))
 
     assert row["status"] == "ok"
-    assert row["ambush_trend_bullish_active"] is True
-    assert row["ambush_near_ma100_active"] is True
-    assert row["ambush_squat_active"] is True
-    assert row["ambush_squat_triggered_today"] is True
-
-
-def test_ambush_squat_does_not_retrigger_while_staying_in_band() -> None:
-    closes = [80.0] * 210 + [120.0] * 48 + [101.0, 101.0]
-    row = stock_scanner.compute_scanner_signal_row("TEST", _bars(closes))
-
-    assert row["status"] == "ok"
-    assert row["ambush_squat_active"] is True
+    assert row["ambush_trend_bullish_active"] is False
+    assert row["ambush_near_ma100_active"] is False
+    assert row["ambush_near_ma200_active"] is False
+    assert row["ambush_squat_active"] is False
     assert row["ambush_squat_triggered_today"] is False
-
-
-def test_ambush_squat_retriggers_after_exiting_and_reentering_band() -> None:
-    closes = [80.0] * 210 + [120.0] * 47 + [101.0, 130.0, 101.0]
-    row = stock_scanner.compute_scanner_signal_row("TEST", _bars(closes))
-
-    assert row["status"] == "ok"
-    assert row["ambush_squat_active"] is True
-    assert row["ambush_squat_triggered_today"] is True
-
-
-def test_ambush_squat_does_not_trigger_above_band_or_below_ma() -> None:
-    above_band = [80.0] * 210 + [120.0] * 48 + [130.0, 103.0]
-    below_ma = [80.0] * 210 + [120.0] * 48 + [130.0, 99.0]
-
-    above_row = stock_scanner.compute_scanner_signal_row("TEST", _bars(above_band))
-    below_row = stock_scanner.compute_scanner_signal_row("TEST", _bars(below_ma))
-
-    assert above_row["status"] == "ok"
-    assert above_row["ambush_squat_active"] is False
-    assert above_row["ambush_squat_triggered_today"] is False
-
-    assert below_row["status"] == "ok"
-    assert below_row["ambush_squat_active"] is False
-    assert below_row["ambush_squat_triggered_today"] is False
 
 
 def test_scanner_marks_insufficient_data_when_less_than_201_bars() -> None:
@@ -163,4 +131,3 @@ def test_scanner_marks_insufficient_data_when_recent_opens_missing() -> None:
     assert row["status"] == "insufficient_data"
     assert "Missing open prices" in str(row["status_message"])
     assert row["recovery_momentum_triggered_today"] is False
-

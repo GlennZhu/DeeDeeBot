@@ -188,20 +188,18 @@ NEGATIVE_STOCK_TRIGGER_IDS: set[str] = {
 SCANNER_TRIGGER_COLUMNS = [
     "bullish_alignment_triggered_today",
     "recovery_momentum_triggered_today",
-    "ambush_squat_triggered_today",
 ]
 
 SCANNER_TRIGGER_SIGNAL_IDS: dict[str, str] = {
     "bullish_alignment_triggered_today": "bullish_alignment_trigger",
     "recovery_momentum_triggered_today": "recovery_momentum_trigger",
-    "ambush_squat_triggered_today": "ambush_squat_trigger",
 }
 
 SCANNER_TRIGGER_LABELS: dict[str, str] = {
     "bullish_alignment_triggered_today": "Bullish Alignment Trigger",
     "recovery_momentum_triggered_today": "MA Recovery + Momentum Confirmation",
-    "ambush_squat_triggered_today": "Ambush / Squat Alert",
 }
+RETIRED_SCANNER_SIGNAL_IDS: set[str] = {"ambush_squat_trigger"}
 ERROR_DIAGNOSTIC_COLUMNS = ["error_type", "error_provider", "error_retryable"]
 ERROR_TYPE_RATE_LIMITED = "rate_limited"
 ERROR_TYPE_UPSTREAM_UNREACHABLE = "upstream_unreachable"
@@ -350,6 +348,14 @@ def _prune_signal_event_history(frame: pd.DataFrame, now_iso: str) -> pd.DataFra
     keep_mask = event_ts >= cutoff
     kept = out.loc[keep_mask].copy()
     kept_ts = event_ts.loc[keep_mask]
+    if RETIRED_SCANNER_SIGNAL_IDS and not kept.empty:
+        retired_mask = (
+            kept["domain"].fillna("").astype(str).str.strip().str.lower().eq("scanner")
+            & kept["signal_id"].fillna("").astype(str).str.strip().str.lower().isin(RETIRED_SCANNER_SIGNAL_IDS)
+        )
+        if retired_mask.any():
+            kept = kept.loc[~retired_mask].copy()
+            kept_ts = kept_ts.loc[~retired_mask]
     if kept.empty:
         return _empty_signal_events_frame()
 
@@ -1671,7 +1677,7 @@ def _compute_scanner_signals(
         frame["_any_triggered_today"] = frame[SCANNER_TRIGGER_COLUMNS].fillna(False).astype(bool).any(axis=1)
     else:
         frame["_any_triggered_today"] = False
-    active_cols = ["bullish_alignment_active", "recovery_momentum_triggered_today", "ambush_squat_active"]
+    active_cols = ["bullish_alignment_active", "recovery_momentum_triggered_today"]
     if set(active_cols).issubset(frame.columns):
         frame["_any_active"] = frame[active_cols].fillna(False).astype(bool).any(axis=1)
     else:
@@ -2186,14 +2192,6 @@ def _detect_new_scanner_trigger_events(previous: pd.DataFrame, current: pd.DataF
                     f"three_bullish_candles={_fmt_bool(row.get('recovery_three_bullish_candles_today'))}; "
                     f"sma50={_fmt_num(row.get('sma50'))}"
                 )
-            elif trigger_col == "ambush_squat_triggered_today":
-                details = (
-                    f"near_ma100={_fmt_bool(row.get('ambush_near_ma100_active'))}; "
-                    f"near_ma200={_fmt_bool(row.get('ambush_near_ma200_active'))}; "
-                    f"gap_ma100_pct={_fmt_num(row.get('gap_to_sma100_pct'))}; "
-                    f"gap_ma200_pct={_fmt_num(row.get('gap_to_sma200_pct'))}"
-                )
-
             events.append(
                 {
                     "ticker": ticker,

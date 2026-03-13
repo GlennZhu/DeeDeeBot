@@ -120,11 +120,6 @@ Scanner signals (exact EOD implementations):
 - Triggered when `Close` crosses above `SMA50` today (`today > SMA50` and `yesterday <= SMA50`)
 - Requires 3 bullish candles (`Close > Open`) across the last 3 trading days
 
-3. Ambush / Squat Alert:
-- Trend filter: `SMA50 > SMA200`
-- Active when close is within `0% to +2%` above `SMA100` or `SMA200`
-- Triggered only on the transition day (active today, not active yesterday)
-
 Scanner alerts:
 - Scanner trigger events are written into `signal_events_7d.csv` with `domain=scanner`
 - Newly triggered scanner signals are posted to Discord using the same `DISCORD_WEBHOOK_URL`

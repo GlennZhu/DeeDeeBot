@@ -123,7 +123,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         "GOOG": _bars_frame([80.0] * 225 + [120.0] * 20 + [100.0] * 14 + [140.0]),
         # Recovery + momentum trigger today.
         "META": _bars_frame([100.0] * 257 + [98.0, 99.0, 101.0]),
-        # Ambush / squat trigger today.
+        # Previously matched retired ambush/squat setup; now expected to stay disabled.
         "AMZN": _bars_frame([80.0] * 210 + [120.0] * 48 + [130.0, 101.0]),
     }
 
@@ -292,7 +292,7 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
     assert {"GOOG", "AVGO", "NVDA", "MSFT", "QQQ", "META", "AMZN"}.issubset(set(scanner_signals["ticker"].tolist()))
     assert bool(scanner_signals["bullish_alignment_triggered_today"].fillna(False).astype(bool).any())
     assert bool(scanner_signals["recovery_momentum_triggered_today"].fillna(False).astype(bool).any())
-    assert bool(scanner_signals["ambush_squat_triggered_today"].fillna(False).astype(bool).any())
+    assert not bool(scanner_signals["ambush_squat_triggered_today"].fillna(False).astype(bool).any())
 
     thesis = pd.read_csv(derived_dir / "scanner_thesis_tags.csv")
     assert thesis.columns.tolist() == pipeline.SCANNER_THESIS_COLUMNS
@@ -309,7 +309,6 @@ def test_pipeline_generates_expected_csv_contracts(tmp_path: Path, monkeypatch) 
         assert {
             "bullish_alignment_trigger",
             "recovery_momentum_trigger",
-            "ambush_squat_trigger",
         }.issubset(set(scanner_rows["signal_id"].astype(str).tolist()))
 
 
@@ -1082,6 +1081,62 @@ def test_update_signal_event_history_writes_scanner_rows_for_triggered_events(tm
     assert row["subject_name"] == "Alphabet Inc."
     assert row["signal_id"] == "bullish_alignment_trigger"
     assert row["details"] != ""
+
+
+def test_update_signal_event_history_drops_retired_scanner_signal_ids(tmp_path: Path) -> None:
+    path = tmp_path / "signal_events_7d.csv"
+    seed = pd.DataFrame(
+        [
+            {
+                "event_timestamp_utc": "2026-02-09T12:00:00Z",
+                "event_timestamp_et": "2026-02-09 07:00:00 EST",
+                "domain": "scanner",
+                "event_type": "triggered",
+                "subject_id": "GOOG",
+                "subject_name": "Alphabet Inc.",
+                "benchmark_ticker": "",
+                "signal_id": "ambush_squat_trigger",
+                "signal_label": "Ambush / Squat Alert",
+                "as_of_date": "2026-02-09",
+                "value": "",
+                "price": 140.0,
+                "state_transition": "",
+                "status": "ok",
+                "details": "",
+            },
+            {
+                "event_timestamp_utc": "2026-02-09T12:05:00Z",
+                "event_timestamp_et": "2026-02-09 07:05:00 EST",
+                "domain": "scanner",
+                "event_type": "triggered",
+                "subject_id": "META",
+                "subject_name": "Meta Platforms, Inc.",
+                "benchmark_ticker": "",
+                "signal_id": "bullish_alignment_trigger",
+                "signal_label": "Bullish Alignment Trigger",
+                "as_of_date": "2026-02-09",
+                "value": "",
+                "price": 200.0,
+                "state_transition": "",
+                "status": "ok",
+                "details": "",
+            },
+        ],
+        columns=pipeline.SIGNAL_EVENT_COLUMNS,
+    )
+    seed.to_csv(path, index=False)
+
+    pipeline._update_signal_event_history(
+        path,
+        macro_events=[],
+        stock_events=[],
+        scanner_events=[],
+        now_iso="2026-02-10T00:00:00Z",
+    )
+
+    events = pd.read_csv(path, keep_default_na=False)
+    assert "ambush_squat_trigger" not in set(events["signal_id"].tolist())
+    assert "bullish_alignment_trigger" in set(events["signal_id"].tolist())
 
 
 def test_update_signal_event_history_prunes_to_exact_7_day_window(tmp_path: Path) -> None:
