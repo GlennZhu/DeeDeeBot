@@ -52,6 +52,42 @@ def test_rsi_overbought_boundary(monkeypatch) -> None:
     assert row_above["exit_rsi_overbought"] is True
 
 
+def test_entry_rsi_extreme_oversold_thresholds_for_stock_and_qqq(monkeypatch) -> None:
+    closes = _series([100.0 + i for i in range(260)])
+
+    def rsi_at_29(series: pd.Series, period: int = 14) -> pd.Series:
+        del period
+        out = pd.Series(50.0, index=series.index, dtype=float)
+        out.iloc[-1] = 29.0
+        return out
+
+    monkeypatch.setattr(stock_signals, "compute_rsi14", rsi_at_29)
+    row_stock_29 = stock_signals.compute_stock_signal_row("TEST", closes)
+    row_qqq_29 = stock_signals.compute_stock_signal_row("QQQ", closes)
+    assert row_stock_29["entry_rsi_extreme_oversold"] is False
+    assert row_qqq_29["entry_rsi_extreme_oversold"] is True
+
+    def rsi_at_30(series: pd.Series, period: int = 14) -> pd.Series:
+        del period
+        out = pd.Series(50.0, index=series.index, dtype=float)
+        out.iloc[-1] = 30.0
+        return out
+
+    monkeypatch.setattr(stock_signals, "compute_rsi14", rsi_at_30)
+    row_qqq_30 = stock_signals.compute_stock_signal_row("QQQ", closes)
+    assert row_qqq_30["entry_rsi_extreme_oversold"] is False
+
+    def rsi_below_25(series: pd.Series, period: int = 14) -> pd.Series:
+        del period
+        out = pd.Series(50.0, index=series.index, dtype=float)
+        out.iloc[-1] = 24.9
+        return out
+
+    monkeypatch.setattr(stock_signals, "compute_rsi14", rsi_below_25)
+    row_stock_24_9 = stock_signals.compute_stock_signal_row("TEST", closes)
+    assert row_stock_24_9["entry_rsi_extreme_oversold"] is True
+
+
 def test_detect_bearish_rsi_divergence_true_and_false_controls() -> None:
     prices = _series(
         [
@@ -291,6 +327,7 @@ def test_compute_stock_signal_row_insufficient_data() -> None:
 
     assert row["status"] == "insufficient_data"
     assert row["entry_bullish_alignment"] is False
+    assert row["entry_rsi_extreme_oversold"] is False
     assert row["exit_price_below_sma50"] is False
     assert row["exit_death_cross_50_lt_200"] is False
     assert row["exit_rsi_overbought"] is False

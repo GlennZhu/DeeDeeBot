@@ -9,6 +9,8 @@ from typing import Any
 import pandas as pd
 
 DEFAULT_BENCHMARK_TICKER = "QQQ"
+EXTREME_RSI_OVERSOLD_STOCK_THRESHOLD = 25.0
+EXTREME_RSI_OVERSOLD_QQQ_THRESHOLD = 30.0
 SQUAT_NEAR_ZONE_MIN_GAP = 0.02
 SQUAT_NEAR_ZONE_MAX_GAP = 0.03
 SQUAT_CRITICAL_SUPPORT_MIN_GAP = -0.02
@@ -48,6 +50,7 @@ ACTIVE_RSI_DIVERGENCE_VERSION = "v2"
 
 STOCK_TRIGGER_COLUMNS = [
     "entry_bullish_alignment",
+    "entry_rsi_extreme_oversold",
     "exit_price_below_sma50",
     "exit_death_cross_50_lt_200",
     "exit_rsi_overbought",
@@ -567,6 +570,12 @@ def compute_stock_signal_row(
             day_change_pct = float(day_change) / float(prev_price)
 
     entry_bullish_alignment = _safe_gt(sma14, sma50) and (_safe_gt(sma50, sma100) or _safe_gt(sma50, sma200))
+    entry_rsi_extreme_oversold_threshold = (
+        EXTREME_RSI_OVERSOLD_QQQ_THRESHOLD if is_benchmark_ticker else EXTREME_RSI_OVERSOLD_STOCK_THRESHOLD
+    )
+    entry_rsi_extreme_oversold = (
+        _is_valid_number(rsi14) and float(rsi14) < float(entry_rsi_extreme_oversold_threshold)
+    )
     exit_price_below_sma50 = _safe_lt(price, sma50)
     exit_death_cross_50_lt_200 = _safe_lt(sma50, sma200)
     exit_rsi_overbought = _is_valid_number(rsi14) and float(rsi14) > 80.0
@@ -656,6 +665,7 @@ def compute_stock_signal_row(
 
     if status != "ok":
         entry_bullish_alignment = False
+        entry_rsi_extreme_oversold = False
         exit_price_below_sma50 = False
         exit_death_cross_50_lt_200 = False
         exit_rsi_overbought = False
@@ -712,6 +722,7 @@ def compute_stock_signal_row(
         "relative_strength_weak": bool(relative["relative_strength_weak"]),
         "relative_strength_reasons": str(relative["relative_strength_reasons"]),
         "entry_bullish_alignment": bool(entry_bullish_alignment),
+        "entry_rsi_extreme_oversold": bool(entry_rsi_extreme_oversold),
         "exit_price_below_sma50": bool(exit_price_below_sma50),
         "exit_death_cross_50_lt_200": bool(exit_death_cross_50_lt_200),
         "exit_rsi_overbought": bool(exit_rsi_overbought),

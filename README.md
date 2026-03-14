@@ -36,6 +36,7 @@ For each watched ticker, the pipeline checks:
 
 1. Entry signal:
 - `SMA14 > SMA50 > (SMA100 or SMA200)`
+- `RSI14 < 25` (or `RSI14 < 30` for `QQQ`) for extreme-oversold entry watch
 
 2. Exit and risk signals:
 - `price < SMA50`
