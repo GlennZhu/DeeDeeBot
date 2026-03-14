@@ -208,4 +208,4 @@ Notifications:
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 - Optionally set `FRED_API_KEY` as a GitHub repository secret to use official FRED API responses instead of keyless graph CSV.
 
-Workflow `update_stock_intraday.yml` runs every 15 minutes in UTC and executes `python -m src.pipeline --stock-only` to keep watchlist alerts fresh intraday.
+Workflow `update_stock_intraday.yml` is triggered every 15 minutes in UTC, then a runtime Eastern-time guard allows execution only on weekdays during the intraday session window (**4:00 AM ET through 8:00 PM ET**, inclusive end-of-session slot). It executes `python -m src.pipeline --stock-only` to keep watchlist alerts fresh intraday.

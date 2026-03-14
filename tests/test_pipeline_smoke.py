@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +20,57 @@ def _stock_row(ticker: str, **triggers: bool) -> dict[str, object]:
         row[trigger_col] = False
     row.update(triggers)
     return row
+
+
+def test_is_trading_or_extended_hours_et_includes_end_of_extended_window() -> None:
+    # 2026-02-11T01:00:00Z == 2026-02-10 20:00:00 ET (end of after-hours session)
+    assert pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 11, 1, 0, tzinfo=timezone.utc))
+
+
+def test_is_trading_or_extended_hours_et_excludes_after_extended_close() -> None:
+    # 2026-02-11T01:01:00Z == 2026-02-10 20:01:00 ET
+    assert not pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 11, 1, 1, tzinfo=timezone.utc))
+
+
+def test_is_trading_or_extended_hours_et_excludes_weekend() -> None:
+    assert not pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 14, 15, 0, tzinfo=timezone.utc))
+
+
+def test_compute_watchlist_signals_skips_intraday_quotes_outside_session(monkeypatch) -> None:
+    watchlist = pd.DataFrame([{"ticker": "TEST", "benchmark": "QQQ"}])
+    idx = pd.date_range("2025-01-01", periods=260, freq="B")
+    ticker_close = pd.Series([100.0 + float(i) for i in range(len(idx))], index=idx)
+    benchmark_close = pd.Series([200.0 + float(i) for i in range(len(idx))], index=idx)
+
+    monkeypatch.setattr(pipeline, "_is_trading_or_extended_hours_et", lambda now_utc=None: False)
+    monkeypatch.setattr(
+        pipeline,
+        "fetch_stock_daily_history_batch_yfinance",
+        lambda tickers, start_date: {
+            "TEST": ticker_close.copy(),
+            "QQQ": benchmark_close.copy(),
+        },
+    )
+
+    def _unexpected_batch_fetch(_tickers):
+        raise AssertionError("intraday batch fetch should be skipped outside session")
+
+    def _unexpected_single_fetch(_ticker):
+        raise AssertionError("intraday single-symbol fetch should be skipped outside session")
+
+    monkeypatch.setattr(pipeline, "fetch_stock_intraday_quotes_batch", _unexpected_batch_fetch)
+    monkeypatch.setattr(pipeline, "fetch_stock_intraday_quote", _unexpected_single_fetch)
+
+    frame = pipeline._compute_watchlist_signals(
+        watchlist=watchlist,
+        start_date="2025-01-01",
+        now_iso="2026-02-10T00:00:00Z",
+    )
+
+    row = frame.loc[frame["ticker"] == "TEST"].iloc[0]
+    assert row["status"] == "ok"
+    assert pd.isna(row["intraday_quote_source"])
+    assert "price basis: daily_close" in str(row["status_message"])
 
 
 def test_detect_new_threshold_events_flags_only_new_trigger() -> None:

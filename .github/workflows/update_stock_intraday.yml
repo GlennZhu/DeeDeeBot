@@ -18,22 +18,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Evaluate Eastern intraday session guard
+        id: guard
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          should_run="false"
+          reason="outside_et_intraday_session"
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            should_run="true"
+            reason="workflow_dispatch"
+          else
+            local_dow="$(TZ=America/New_York date +%u)"
+            local_hm="$(TZ=America/New_York date +%H:%M)"
+            local_hour="$(TZ=America/New_York date +%H)"
+            local_minute="$(TZ=America/New_York date +%M)"
+            local_slot_minutes=$((10#$local_hour * 60 + ((10#$local_minute / 15) * 15)))
+
+            session_start_minutes=$((4 * 60))   # 04:00 ET pre-market open
+            session_end_minutes=$((20 * 60))    # 20:00 ET after-hours close
+
+            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_slot_minutes" -ge "$session_start_minutes" && "$local_slot_minutes" -le "$session_end_minutes" ]]; then
+              should_run="true"
+              reason="weekday_trading_or_extended_hours_slot"
+            fi
+          fi
+
+          echo "Eastern weekday=${local_dow:-manual}, time=${local_hm:-manual}, reason=${reason}"
+          echo "run_pipeline=$should_run" >> "$GITHUB_OUTPUT"
+
       - name: Setup Python
+        if: steps.guard.outputs.run_pipeline == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.guard.outputs.run_pipeline == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run stock-only pipeline
+        if: steps.guard.outputs.run_pipeline == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python -m src.pipeline --stock-only
 
       - name: Commit changed stock CSV files
+        if: steps.guard.outputs.run_pipeline == 'true'
         run: |
           set -euo pipefail
 

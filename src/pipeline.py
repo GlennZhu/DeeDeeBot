@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib import error, request
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -155,6 +156,9 @@ STOCK_BOOL_COLUMNS = [
     "relative_strength_weak",
     *STOCK_TRIGGER_COLUMNS,
 ]
+EASTERN_TZ = ZoneInfo("America/New_York")
+INTRADAY_SESSION_START_MINUTES_ET = 4 * 60
+INTRADAY_SESSION_END_MINUTES_ET = 20 * 60
 
 
 def _default_start_date(lookback_years: int) -> str:
@@ -221,6 +225,21 @@ def _format_et_timestamp_from_utc(raw_value: str) -> str:
     else:
         ts = ts.tz_convert("UTC")
     return ts.tz_convert("America/New_York").strftime("%Y-%m-%d %H:%M:%S %Z")
+
+
+def _is_trading_or_extended_hours_et(now_utc: datetime | None = None) -> bool:
+    ts_utc = now_utc or datetime.now(timezone.utc)
+    if ts_utc.tzinfo is None:
+        ts_utc = ts_utc.replace(tzinfo=timezone.utc)
+    else:
+        ts_utc = ts_utc.astimezone(timezone.utc)
+
+    ts_et = ts_utc.astimezone(EASTERN_TZ)
+    if ts_et.isoweekday() > 5:
+        return False
+
+    total_minutes = ts_et.hour * 60 + ts_et.minute
+    return INTRADAY_SESSION_START_MINUTES_ET <= total_minutes <= INTRADAY_SESSION_END_MINUTES_ET
 
 
 def _event_cell_value(raw_value: Any) -> Any:
@@ -710,11 +729,18 @@ def _compute_watchlist_signals(
     benchmark_history: dict[str, pd.Series | None] = {}
     benchmark_intraday: dict[str, dict[str, Any] | None] = {}
     batched_intraday_quotes: dict[str, dict[str, Any]] = {}
-    try:
-        batched_intraday_quotes = fetch_stock_intraday_quotes_batch(prefetch_tickers)
-    except Exception as exc:
-        print(f"Warning: failed to fetch batched intraday quotes: {exc}")
-        batched_intraday_quotes = {}
+    intraday_session_active = _is_trading_or_extended_hours_et()
+    if intraday_session_active:
+        try:
+            batched_intraday_quotes = fetch_stock_intraday_quotes_batch(prefetch_tickers)
+        except Exception as exc:
+            print(f"Warning: failed to fetch batched intraday quotes: {exc}")
+            batched_intraday_quotes = {}
+    else:
+        print(
+            "Info: outside ET trading/extended-hours window (04:00-20:00); "
+            "skipping intraday quote fetch and using daily-close signal basis."
+        )
 
     for benchmark in sorted(watchlist["benchmark"].astype(str).unique()):
         benchmark_symbol = _normalize_benchmark(benchmark)
@@ -724,13 +750,15 @@ def _compute_watchlist_signals(
             print(f"Warning: failed to fetch benchmark history for {benchmark_symbol}: {exc}")
             benchmark_history[benchmark_symbol] = None
 
-        benchmark_quote = batched_intraday_quotes.get(benchmark_symbol)
-        if benchmark_quote is None:
-            try:
-                benchmark_quote = fetch_stock_intraday_quote(benchmark_symbol)
-            except Exception as exc:
-                print(f"Warning: failed to fetch benchmark intraday quote for {benchmark_symbol}: {exc}")
-                benchmark_quote = None
+        benchmark_quote: dict[str, Any] | None = None
+        if intraday_session_active:
+            benchmark_quote = batched_intraday_quotes.get(benchmark_symbol)
+            if benchmark_quote is None:
+                try:
+                    benchmark_quote = fetch_stock_intraday_quote(benchmark_symbol)
+                except Exception as exc:
+                    print(f"Warning: failed to fetch benchmark intraday quote for {benchmark_symbol}: {exc}")
+                    benchmark_quote = None
         benchmark_intraday[benchmark_symbol] = benchmark_quote
 
     rows: list[dict[str, Any]] = []
@@ -803,22 +831,24 @@ def _compute_watchlist_signals(
                     )
             continue
 
-        latest_quote: dict[str, Any] | None = batched_intraday_quotes.get(ticker)
+        latest_quote: dict[str, Any] | None = None
         latest_price: float | None = None
-        if latest_quote is None:
-            try:
-                latest_quote = fetch_stock_intraday_quote(ticker)
-            except Exception as exc:
-                print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
-                latest_quote = None
-        if latest_quote is not None:
-            try:
-                latest_price = float(latest_quote["price"])
-            except Exception:
-                latest_price = None
-            quote_source = str(latest_quote.get("source", "")).strip()
-            if quote_source:
-                daily_close.attrs["intraday_source"] = quote_source
+        if intraday_session_active:
+            latest_quote = batched_intraday_quotes.get(ticker)
+            if latest_quote is None:
+                try:
+                    latest_quote = fetch_stock_intraday_quote(ticker)
+                except Exception as exc:
+                    print(f"Warning: failed to fetch intraday quote for {ticker}: {exc}")
+                    latest_quote = None
+            if latest_quote is not None:
+                try:
+                    latest_price = float(latest_quote["price"])
+                except Exception:
+                    latest_price = None
+                quote_source = str(latest_quote.get("source", "")).strip()
+                if quote_source:
+                    daily_close.attrs["intraday_source"] = quote_source
 
         try:
             benchmark_close = benchmark_history.get(benchmark_ticker)
