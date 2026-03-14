@@ -39,16 +39,16 @@ def _parse_args() -> argparse.Namespace:
         help="CSV with watchlist tickers (column: ticker).",
     )
     parser.add_argument(
-        "--scanner-path",
+        "--candidate-path",
         type=Path,
-        default=Path("data/derived/scanner_signals_latest.csv"),
+        default=Path("data/derived/stock_signals_latest.csv"),
         help="CSV used to source extra liquid symbols (column: ticker).",
     )
     parser.add_argument(
-        "--max-scanner-tickers",
+        "--max-candidate-tickers",
         type=int,
         default=30,
-        help="How many non-watchlist scanner tickers to include.",
+        help="How many non-watchlist candidate tickers to include.",
     )
     parser.add_argument(
         "--tickers",
@@ -59,7 +59,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-etfs",
         action="store_true",
-        help="Include ETF symbols from scanner candidate list.",
+        help="Include ETF symbols from candidate list.",
     )
     parser.add_argument(
         "--start-date",
@@ -158,7 +158,7 @@ def _load_watchlist_tickers(path: Path) -> list[str]:
     return out
 
 
-def _load_scanner_tickers(path: Path, *, max_tickers: int, include_etfs: bool) -> list[str]:
+def _load_candidate_tickers(path: Path, *, max_tickers: int, include_etfs: bool) -> list[str]:
     if max_tickers <= 0 or not path.exists():
         return []
     try:
@@ -506,25 +506,25 @@ def main() -> None:
     os.environ["MARKET_DATA_PROVIDER"] = str(args.market_data_provider).strip().lower() or "public"
 
     watchlist_tickers = _load_watchlist_tickers(args.watchlist_path)
-    scanner_tickers = _load_scanner_tickers(
-        args.scanner_path,
-        max_tickers=max(0, int(args.max_scanner_tickers)),
+    candidate_tickers = _load_candidate_tickers(
+        args.candidate_path,
+        max_tickers=max(0, int(args.max_candidate_tickers)),
         include_etfs=bool(args.include_etfs),
     )
     extra_tickers = _parse_extra_tickers(args.tickers)
 
     tickers: list[str] = []
-    for source in [watchlist_tickers, scanner_tickers, extra_tickers]:
+    for source in [watchlist_tickers, candidate_tickers, extra_tickers]:
         for ticker in source:
             if ticker and ticker not in tickers:
                 tickers.append(ticker)
 
     if not tickers:
-        raise SystemExit("No tickers selected. Provide watchlist/scanner files or --tickers.")
+        raise SystemExit("No tickers selected. Provide watchlist/candidate files or --tickers.")
 
     print(
         f"Fetching daily history for {len(tickers)} tickers "
-        f"(watchlist={len(watchlist_tickers)}, scanner={len(scanner_tickers)}, extra={len(extra_tickers)})."
+        f"(watchlist={len(watchlist_tickers)}, candidates={len(candidate_tickers)}, extra={len(extra_tickers)})."
     )
     history_map = fetch_stock_daily_history_batch_yfinance(
         tickers,

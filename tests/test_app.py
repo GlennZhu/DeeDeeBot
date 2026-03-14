@@ -44,7 +44,6 @@ def _patch_main_renderers(monkeypatch) -> list[str]:
     calls: list[str] = []
     monkeypatch.setattr(app, "_render_macro_tab", lambda window: calls.append(f"macro:{window}"))
     monkeypatch.setattr(app, "_render_stock_tab", lambda: calls.append("stock"))
-    monkeypatch.setattr(app, "_render_scanner_tab", lambda: calls.append("scanner"))
     monkeypatch.setattr(app, "_render_signal_history_tab", lambda: calls.append("history"))
     return calls
 
@@ -59,7 +58,7 @@ def test_main_clears_cache_on_first_load(monkeypatch) -> None:
 
     assert fake_st.cache_data.clear_calls == 1
     assert fake_st.session_state[app.APP_DATA_SIGNATURE_SESSION_KEY] == (("data.csv", 1, 128),)
-    assert calls == ["macro:15Y", "stock", "scanner", "history"]
+    assert calls == ["macro:15Y", "stock", "history"]
 
 
 def test_main_clears_cache_only_once_per_session(monkeypatch) -> None:
@@ -72,7 +71,7 @@ def test_main_clears_cache_only_once_per_session(monkeypatch) -> None:
     app.main()
 
     assert fake_st.cache_data.clear_calls == 1
-    assert calls == ["macro:15Y", "stock", "scanner", "history"] * 2
+    assert calls == ["macro:15Y", "stock", "history"] * 2
 
 
 def test_main_clears_cache_when_data_signature_changes(monkeypatch) -> None:
@@ -94,4 +93,4 @@ def test_main_clears_cache_when_data_signature_changes(monkeypatch) -> None:
     app.main()
 
     assert fake_st.cache_data.clear_calls == 2
-    assert calls == ["macro:15Y", "stock", "scanner", "history"] * 3
+    assert calls == ["macro:15Y", "stock", "history"] * 3

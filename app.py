@@ -1,4 +1,4 @@
-"""Streamlit dashboard for macro, stock watchlist, and market scanner monitoring."""
+"""Streamlit dashboard for macro and stock watchlist monitoring."""
 
 from __future__ import annotations
 
@@ -15,8 +15,6 @@ RAW_DATA_DIR = Path("data/raw")
 DERIVED_DATA_DIR = Path("data/derived")
 STOCK_WATCHLIST_PATH = DERIVED_DATA_DIR / "stock_watchlist.csv"
 STOCK_SIGNALS_PATH = DERIVED_DATA_DIR / "stock_signals_latest.csv"
-STOCK_UNIVERSE_PATH = DERIVED_DATA_DIR / "stock_universe.csv"
-SCANNER_SIGNALS_PATH = DERIVED_DATA_DIR / "scanner_signals_latest.csv"
 SIGNAL_EVENTS_PATH = DERIVED_DATA_DIR / "signal_events_7d.csv"
 DEFAULT_STOCK_BENCHMARK = "QQQ"
 DEFAULT_STOCK_WATCHLIST: list[dict[str, str]] = [
@@ -103,27 +101,12 @@ EVENT_TYPE_COLORS = {
 DOMAIN_LABELS = {
     "macro": "Macro",
     "stock": "Stock",
-    "scanner": "Scanner",
 }
 
 DOMAIN_COLORS = {
     "macro": "#1f6feb",
     "stock": "#0f766e",
-    "scanner": "#7c3aed",
 }
-
-SCANNER_SIGNAL_FILTER_OPTIONS: list[dict[str, str]] = [
-    {
-        "label": "Bullish Alignment Trigger",
-        "trigger_col": "bullish_alignment_triggered_today",
-        "active_col": "bullish_alignment_active",
-    },
-    {
-        "label": "MA Recovery + Momentum Confirmation",
-        "trigger_col": "recovery_momentum_triggered_today",
-        "active_col": "recovery_momentum_triggered_today",
-    },
-]
 
 APP_DATA_SIGNATURE_SESSION_KEY = "_dashboard_data_signature"
 
@@ -159,8 +142,6 @@ def _dashboard_data_dependencies() -> list[Path]:
         DERIVED_DATA_DIR / "metric_snapshot.csv",
         STOCK_SIGNALS_PATH,
         STOCK_WATCHLIST_PATH,
-        SCANNER_SIGNALS_PATH,
-        STOCK_UNIVERSE_PATH,
         SIGNAL_EVENTS_PATH,
         *metric_series_paths,
     ]
@@ -459,42 +440,6 @@ def _as_bool(raw_value: object) -> bool:
     return str(raw_value).strip().lower() in {"true", "1", "yes", "y", "on"}
 
 
-def _scanner_signal_mask(frame: pd.DataFrame, signal_spec: dict[str, str], mode: str) -> pd.Series:
-    col_key = "trigger_col" if mode == "Triggered Today" else "active_col"
-    col = str(signal_spec.get(col_key, "")).strip()
-    if not col or col not in frame.columns:
-        return pd.Series(False, index=frame.index)
-    return frame[col].map(_as_bool)
-
-
-def _scanner_signal_labels_for_row(row: pd.Series) -> str:
-    labels: list[str] = []
-    for signal_spec in SCANNER_SIGNAL_FILTER_OPTIONS:
-        label = str(signal_spec.get("label", "")).strip()
-        trigger_col = str(signal_spec.get("trigger_col", "")).strip()
-        active_col = str(signal_spec.get("active_col", "")).strip()
-        if not label:
-            continue
-        if trigger_col and _as_bool(row.get(trigger_col)):
-            labels.append(f"{label} (Triggered)")
-        elif active_col and _as_bool(row.get(active_col)):
-            labels.append(f"{label} (Active)")
-    return " | ".join(labels)
-
-
-def _render_scanner_signal_guide() -> None:
-    with st.expander("Signal Definitions", expanded=False):
-        st.caption("Exact scanner logic implemented for the 2 EOD scanner signals.")
-        st.markdown(
-            "**Bullish Alignment Trigger**: Active when `SMA14 > SMA50` and (`SMA50 > SMA100` or `SMA50 > SMA200`). "
-            "Triggered today only when active today and not active yesterday."
-        )
-        st.markdown(
-            "**MA Recovery + Momentum Confirmation**: Triggered today when `Close > SMA50` and yesterday `Close <= SMA50`, "
-            "and the last 3 candles are bullish (`Close > Open` on each day)."
-        )
-
-
 def _render_macro_tab(selected_window: str) -> None:
     signals = _load_csv(DERIVED_DATA_DIR / "signals_latest.csv", ["as_of_date", "last_updated_utc"])
     snapshot = _load_csv(DERIVED_DATA_DIR / "metric_snapshot.csv", ["as_of_date", "last_updated_utc"])
@@ -699,188 +644,6 @@ def _render_stock_tab() -> None:
             card.caption(f"Status: {status}{suffix} ({row.get('status_message', '')})")
 
 
-def _render_scanner_tab() -> None:
-    scanner_signals = _load_csv(
-        SCANNER_SIGNALS_PATH,
-        ["as_of_date", "last_updated_utc", "intraday_quote_timestamp_utc"],
-    )
-    st.subheader("Market Scanner (Beyond Watchlist)")
-
-    if scanner_signals.empty:
-        st.info("No scanner data found yet. Run `python -m src.pipeline --stock-only` first.")
-        return
-
-    scanner_signals["ticker"] = scanner_signals["ticker"].astype(str).str.upper()
-    latest_scanner_update_et = "N/A"
-    if "last_updated_utc" in scanner_signals.columns and not scanner_signals["last_updated_utc"].dropna().empty:
-        latest_scanner_update_et = _format_et_timestamp(scanner_signals["last_updated_utc"].dropna().max())
-        st.info(f"Last successful scanner update (ET): {latest_scanner_update_et}")
-
-    if "is_watchlist" not in scanner_signals.columns:
-        scanner_signals["is_watchlist"] = False
-    bool_cols = [
-        "bullish_alignment_active",
-        "bullish_alignment_triggered_today",
-        "recovery_close_cross_sma50_today",
-        "recovery_three_bullish_candles_today",
-        "recovery_momentum_triggered_today",
-        "ambush_trend_bullish_active",
-        "ambush_near_ma100_active",
-        "ambush_near_ma200_active",
-        "ambush_squat_active",
-        "ambush_squat_triggered_today",
-    ]
-    for col in bool_cols:
-        if col not in scanner_signals.columns:
-            scanner_signals[col] = False
-
-    scanner_signals["is_watchlist"] = scanner_signals["is_watchlist"].map(_as_bool)
-    for col in bool_cols:
-        scanner_signals[col] = scanner_signals[col].map(_as_bool)
-
-    trigger_cols = [
-        "bullish_alignment_triggered_today",
-        "recovery_momentum_triggered_today",
-    ]
-    active_cols = [
-        "bullish_alignment_active",
-        "recovery_momentum_triggered_today",
-    ]
-    scanner_signals["_any_triggered_today"] = scanner_signals[trigger_cols].any(axis=1)
-    scanner_signals["_any_active"] = scanner_signals[active_cols].any(axis=1)
-
-    if "status" in scanner_signals.columns:
-        status_series = scanner_signals["status"].fillna("").astype(str).str.strip().str.lower()
-    else:
-        status_series = pd.Series("", index=scanner_signals.index, dtype="string")
-    rows_total = int(len(scanner_signals))
-    ok_rows = int((status_series == "ok").sum())
-    insufficient_data_rows = int((status_series == "insufficient_data").sum())
-    if "error_type" in scanner_signals.columns:
-        error_type_series = scanner_signals["error_type"].fillna("").astype(str).str.strip()
-    else:
-        error_type_series = pd.Series("", index=scanner_signals.index, dtype="string")
-    if "error_provider" in scanner_signals.columns:
-        error_provider_series = scanner_signals["error_provider"].fillna("").astype(str).str.strip()
-    else:
-        error_provider_series = pd.Series("", index=scanner_signals.index, dtype="string")
-    hard_error_rows = int(((error_type_series != "") | (error_provider_series != "")).sum())
-
-    st.caption(
-        "Latest scanner quality snapshot "
-        f"(updated ET: {latest_scanner_update_et}): "
-        f"{rows_total} rows total, {ok_rows} ok, {insufficient_data_rows} insufficient_data, "
-        f"{hard_error_rows} hard errors."
-    )
-    quality_cols = st.columns(4)
-    quality_cols[0].metric("Rows Total", rows_total)
-    quality_cols[1].metric("OK", ok_rows)
-    quality_cols[2].metric("Insufficient Data", insufficient_data_rows)
-    quality_cols[3].metric("Hard Errors", hard_error_rows)
-
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Scanned", rows_total)
-    metric_cols[1].metric("Triggered Today", int(scanner_signals["_any_triggered_today"].sum()))
-    metric_cols[2].metric("Currently Active", int(scanner_signals["_any_active"].sum()))
-    metric_cols[3].metric("Watchlist", int(scanner_signals["is_watchlist"].sum()))
-
-    filter_cols = st.columns(5)
-    mode = filter_cols[0].selectbox("Mode", ["Triggered Today", "Currently Active"], index=1)
-    only_signal_rows = filter_cols[1].checkbox("Only rows with any signal", value=False)
-    include_watchlist_only = filter_cols[2].checkbox("Watchlist only", value=False)
-    require_all_signals = filter_cols[3].checkbox("Match all selected", value=False)
-    search_term = filter_cols[4].text_input("Search", placeholder="Ticker, exchange, name")
-
-    signal_labels = [option["label"] for option in SCANNER_SIGNAL_FILTER_OPTIONS]
-    selected_signal_labels = st.multiselect(
-        "Signal filter",
-        options=signal_labels,
-        default=[],
-        placeholder="Select one or more signals",
-        help="Triggered Today mode filters on event-driven trigger columns. Currently Active mode filters on active-state columns.",
-    )
-    _render_scanner_signal_guide()
-
-    filtered = scanner_signals.copy()
-    if include_watchlist_only:
-        filtered = filtered[filtered["is_watchlist"]]
-    if only_signal_rows:
-        if mode == "Triggered Today":
-            filtered = filtered[filtered["_any_triggered_today"]]
-        else:
-            filtered = filtered[filtered["_any_active"]]
-
-    if selected_signal_labels:
-        signal_specs_by_label = {option["label"]: option for option in SCANNER_SIGNAL_FILTER_OPTIONS}
-        selected_specs = [signal_specs_by_label[label] for label in selected_signal_labels if label in signal_specs_by_label]
-        if selected_specs:
-            signal_masks = [_scanner_signal_mask(filtered, spec, mode) for spec in selected_specs]
-            combined_mask = signal_masks[0].copy()
-            for mask in signal_masks[1:]:
-                if require_all_signals:
-                    combined_mask = combined_mask & mask
-                else:
-                    combined_mask = combined_mask | mask
-            filtered = filtered.loc[combined_mask]
-
-    if search_term.strip():
-        query = search_term.strip().lower()
-        search_columns = [
-            "ticker",
-            "security_name",
-            "exchange",
-        ]
-        mask = pd.Series(False, index=filtered.index)
-        for col in search_columns:
-            if col in filtered.columns:
-                mask = mask | filtered[col].astype(str).str.lower().str.contains(query, na=False)
-        filtered = filtered.loc[mask]
-
-    if filtered.empty:
-        st.info("No scanner rows match the selected filters.")
-        return
-
-    filtered["signal_summary"] = filtered.apply(_scanner_signal_labels_for_row, axis=1)
-    filtered = filtered.sort_values(by=["_any_triggered_today", "_any_active", "ticker"], ascending=[False, False, True])
-
-    display_columns = [
-        "ticker",
-        "price",
-        "open",
-        "sma14",
-        "sma50",
-        "sma100",
-        "sma200",
-        "gap_to_sma100_pct",
-        "gap_to_sma200_pct",
-        "bullish_alignment_active",
-        "bullish_alignment_triggered_today",
-        "recovery_close_cross_sma50_today",
-        "recovery_three_bullish_candles_today",
-        "recovery_momentum_triggered_today",
-        "is_watchlist",
-        "exchange",
-        "security_name",
-        "signal_summary",
-        "status",
-        "status_message",
-        "error_type",
-        "error_provider",
-        "error_retryable",
-    ]
-    available_columns = [col for col in display_columns if col in filtered.columns]
-    st.dataframe(filtered[available_columns], use_container_width=True, hide_index=True)
-
-    universe_frame = _load_csv(STOCK_UNIVERSE_PATH, ["last_refreshed_utc"])
-    if not universe_frame.empty and "last_refreshed_utc" in universe_frame.columns:
-        latest_universe_refresh = universe_frame["last_refreshed_utc"].dropna()
-        if not latest_universe_refresh.empty:
-            st.caption(
-                "Universe source refresh (ET): "
-                f"{_format_et_timestamp(latest_universe_refresh.max())}"
-            )
-
-
 def _render_signal_history_tab() -> None:
     signal_events = _load_csv(SIGNAL_EVENTS_PATH, ["event_timestamp_utc"])
     st.subheader("Signal Events (Past 7 Days)")
@@ -929,6 +692,10 @@ def _render_signal_history_tab() -> None:
 
     signal_events["domain"] = signal_events["domain"].astype(str).str.strip().str.lower()
     signal_events["event_type"] = signal_events["event_type"].astype(str).str.strip().str.lower()
+    signal_events = signal_events[signal_events["domain"].isin({"macro", "stock"})].copy()
+    if signal_events.empty:
+        st.info("No macro/stock events in the last 7 days.")
+        return
     signal_events["_event_ts"] = event_timestamps
     signal_events["event_timestamp_utc"] = event_timestamps.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     signal_events["event_timestamp_et"] = signal_events["event_timestamp_utc"].apply(_format_et_timestamp)
@@ -939,16 +706,15 @@ def _render_signal_history_tab() -> None:
         signal_events["event_type"].str.title()
     )
 
-    metric_cols = st.columns(6)
+    metric_cols = st.columns(5)
     metric_cols[0].metric("Total (7D)", len(signal_events))
     metric_cols[1].metric("Macro", int((signal_events["domain"] == "macro").sum()))
     metric_cols[2].metric("Stock", int((signal_events["domain"] == "stock").sum()))
-    metric_cols[3].metric("Scanner", int((signal_events["domain"] == "scanner").sum()))
-    metric_cols[4].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
-    metric_cols[5].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
+    metric_cols[3].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
+    metric_cols[4].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
 
     filter_cols = st.columns(3)
-    selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock", "Scanner"], index=0)
+    selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock"], index=0)
     selected_event_type = filter_cols[1].selectbox("Event Type", ["All", "Triggered", "Cleared"], index=0)
     search_term = filter_cols[2].text_input("Search", placeholder="Ticker, metric, signal, or detail")
 
@@ -1012,15 +778,11 @@ def main() -> None:
 
     selected_window = "15Y"
 
-    macro_tab, stock_tab, scanner_tab, history_tab = st.tabs(
-        ["Macro Monitor", "Stock Watchlist", "Market Scanner", "Signal History (7D)"]
-    )
+    macro_tab, stock_tab, history_tab = st.tabs(["Macro Monitor", "Stock Watchlist", "Signal History (7D)"])
     with macro_tab:
         _render_macro_tab(selected_window)
     with stock_tab:
         _render_stock_tab()
-    with scanner_tab:
-        _render_scanner_tab()
     with history_tab:
         _render_signal_history_tab()
 
