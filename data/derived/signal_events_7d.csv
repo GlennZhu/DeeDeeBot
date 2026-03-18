@@ -4,24 +4,24 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-03-11T22:40:19Z,2026-03-11 18:40:19 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,184.765,,ok,
 2026-03-11T22:40:19Z,2026-03-11 18:40:19 EDT,stock,triggered,GOOG,GOOG,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,306.21,,ok,
 2026-03-11T22:40:19Z,2026-03-11 18:40:19 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-11,,603.9398,,ok,
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,AUR,"Aurora Innovation, Inc.  - Class A Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,4.46,,ok,sma14=4.6336; sma50=4.4610; sma100=4.4515; sma200=5.1084
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ABCL,AbCellera Biologics Inc. - Common Shares,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,3.65,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=3.6366
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,CHTR,"Charter Communications, Inc. - Class A Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,224.3,,ok,sma14=228.6514; sma50=216.1416; sma100=216.0447; sma200=268.9722
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ASMB,"Assembly Biosciences, Inc. - Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,29.23,,ok,sma14=29.2336; sma50=28.9178; sma100=31.2442; sma200=26.0885
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,AUDC,AudioCodes Ltd. - Ordinary Shares,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,8.16,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=8.0726
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,NVDA,NVIDIA Corporation - Common Stock,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,186.01,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=185.7076
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,COCO,"The Vita Coco Company, Inc. - Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,57.725,,ok,sma14=54.8000; sma50=54.6943; sma100=51.1741; sma200=44.1097
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,DRH,Diamondrock Hospitality Company - Common Stock,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,9.58,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=9.5404
-2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ANGO,"AngioDynamics, Inc. - Common Stock",,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,11.045,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=10.9723
 2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ETN,"Eaton Corporation, PLC Ordinary Shares",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,355.79,,ok,sma14=363.9079; sma50=352.7580; sma100=352.2854; sma200=354.6318
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ANGO,"AngioDynamics, Inc. - Common Stock",,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,11.045,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=10.9723
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,DRH,Diamondrock Hospitality Company - Common Stock,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,9.58,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=9.5404
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,COCO,"The Vita Coco Company, Inc. - Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,57.725,,ok,sma14=54.8000; sma50=54.6943; sma100=51.1741; sma200=44.1097
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,NVDA,NVIDIA Corporation - Common Stock,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,186.01,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=185.7076
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,AUDC,AudioCodes Ltd. - Ordinary Shares,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,8.16,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=8.0726
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ASMB,"Assembly Biosciences, Inc. - Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,29.23,,ok,sma14=29.2336; sma50=28.9178; sma100=31.2442; sma200=26.0885
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,CHTR,"Charter Communications, Inc. - Class A Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,224.3,,ok,sma14=228.6514; sma50=216.1416; sma100=216.0447; sma200=268.9722
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,ABCL,AbCellera Biologics Inc. - Common Shares,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-11,,3.65,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=3.6366
+2026-03-12T00:31:41Z,2026-03-11 20:31:41 EDT,scanner,triggered,AUR,"Aurora Innovation, Inc.  - Class A Common Stock",,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-11,,4.46,,ok,sma14=4.6336; sma50=4.4610; sma100=4.4515; sma200=5.1084
 2026-03-12T01:02:03Z,2026-03-11 21:02:03 EDT,stock,cleared,GOOG,GOOG,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,308.42,,ok,
 2026-03-12T01:02:03Z,2026-03-11 21:02:03 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,186.03,,ok,
 2026-03-12T01:02:03Z,2026-03-11 21:02:03 EDT,stock,cleared,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,186.03,,ok,
+2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,GOOG,GOOG,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,303.67,,ok,
+2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,TSM,TSM,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,340.15,,ok,
 2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,183.1051,,ok,
 2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,183.1051,,ok,
 2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,INTC,INTC,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-11,,46.475,,ok,NEGATIVE_ALPHA_LT_-5PCT
-2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,TSM,TSM,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,340.15,,ok,
-2026-03-12T14:30:54Z,2026-03-12 10:30:54 EDT,stock,triggered,GOOG,GOOG,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,303.67,,ok,
 2026-03-12T15:38:10Z,2026-03-12 11:38:10 EDT,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-11,,134.405,,ok,
 2026-03-12T15:38:10Z,2026-03-12 11:38:10 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,134.405,,ok,
 2026-03-12T16:39:02Z,2026-03-12 12:39:02 EDT,stock,cleared,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-11,,136.365,,ok,
@@ -33,8 +33,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-03-12T22:43:51Z,2026-03-12 18:43:51 EDT,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-12,,134.22,,ok,
 2026-03-12T22:43:51Z,2026-03-12 18:43:51 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-12,,183.23,,ok,
 2026-03-12T22:43:51Z,2026-03-12 18:43:51 EDT,stock,cleared,INTC,INTC,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-12,,45.38,,ok,KEEPING_PACE_OR_LEADING
-2026-03-13T00:35:55Z,2026-03-12 20:35:55 EDT,scanner,triggered,EVCM,EverCommerce Inc. - Common Stock,,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-12,,12.06,,ok,sma14=11.5571; sma50=11.5114; sma100=10.9920; sma200=10.9313
 2026-03-13T00:35:55Z,2026-03-12 20:35:55 EDT,scanner,triggered,DMRC,Digimarc Corporation - Common Stock,,recovery_momentum_trigger,MA Recovery + Momentum Confirmation,2026-03-12,,6.615,,ok,close_cross_sma50=yes; three_bullish_candles=yes; sma50=5.6700
+2026-03-13T00:35:55Z,2026-03-12 20:35:55 EDT,scanner,triggered,EVCM,EverCommerce Inc. - Common Stock,,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-12,,12.06,,ok,sma14=11.5571; sma50=11.5114; sma100=10.9920; sma200=10.9313
 2026-03-13T00:35:55Z,2026-03-12 20:35:55 EDT,scanner,triggered,AMT,American Tower Corporation (REIT) Common Stock,,bullish_alignment_trigger,Bullish Alignment Trigger,2026-03-12,,179.82,,ok,sma14=187.3214; sma50=180.7650; sma100=180.7607; sma200=194.2531
 2026-03-13T05:43:16Z,2026-03-13 01:43:16 EDT,stock,triggered,AAOI,AAOI,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-12,,106.19,,ok,
 2026-03-13T14:26:02Z,2026-03-13 10:26:02 EDT,stock,cleared,VST,VST,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-12,,163.73,,ok,
@@ -45,56 +45,56 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-03-13T15:06:40Z,2026-03-13 11:06:40 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-12,,330.05,,ok,
 2026-03-13T15:06:40Z,2026-03-13 11:06:40 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-12,,330.05,,ok,
 2026-03-13T15:06:40Z,2026-03-13 11:06:40 EDT,stock,triggered,ANET,ANET,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-12,,133.045,,ok,NEGATIVE_ALPHA_LT_-5PCT
-2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-12,,594.9799,,ok,
-2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-12,,131.56,,ok,
-2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-12,,324.699,,ok,
 2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-12,,181.465,,ok,
+2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-12,,324.699,,ok,
+2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-12,,131.56,,ok,
+2026-03-13T15:56:01Z,2026-03-13 11:56:01 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-12,,594.9799,,ok,
 2026-03-13T17:03:26Z,2026-03-13 13:03:26 EDT,stock,triggered,INTC,INTC,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-12,,45.606,,ok,
 2026-03-13T17:03:26Z,2026-03-13 13:03:26 EDT,stock,cleared,ANET,ANET,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-12,,133.225,,ok,KEEPING_PACE_OR_LEADING
 2026-03-13T19:04:47Z,2026-03-13 15:04:47 EDT,stock,cleared,INTC,INTC,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-12,,45.885,,ok,
 2026-03-13T19:04:47Z,2026-03-13 15:04:47 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-12,,181.065,,ok,
 2026-03-13T19:44:29Z,2026-03-13 15:44:29 EDT,stock,triggered,INTC,INTC,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-12,,45.745,,ok,
-2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,cleared,VST,VST,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-13,,159.01,,ok,
-2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,triggered,VRT,VRT,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-03-13,,258.995,,ok,
-2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,triggered,TSM,TSM,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-13,,338.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,cleared,CEG,CEG,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-13,,301.65,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,322.16,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,PDD,PDD,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,102.65,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,AAOI,AAOI,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,96.81,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VIAV,VIAV,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,29.97,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,EWY,EWY,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,124.15,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-13,,322.16,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,GLW,GLW,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,129.12,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,593.72,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,EWY,EWY,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-03-13,,124.15,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,SNDK,SNDK,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,661.62,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,MSFT,MSFT,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,395.55,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,CEG,CEG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,301.77,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,133.57,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,GOOG,GOOG,QQQ,rsi_bullish_divergence,Bullish RSI divergence,2026-03-13,,301.46,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-13,,593.72,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VRT,VRT,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-03-13,,258.88,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,WM,WM,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,238.53,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VST,VST,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,158.95,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,IBIT,IBIT,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,40.37,,ok,
+2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,triggered,TSM,TSM,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-13,,338.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,triggered,VRT,VRT,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-03-13,,258.995,,ok,
+2026-03-13T22:48:38Z,2026-03-13 18:48:38 EDT,stock,cleared,VST,VST,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-13,,159.01,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,INTC,INTC,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,45.77,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VRT,VRT,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,258.88,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,CEG,CEG,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,301.77,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,MU,MU,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,426.13,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,301.46,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,TSM,TSM,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-13,,338.31,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,IBIT,IBIT,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,40.37,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,TSM,TSM,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,338.31,,ok,
-2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,40.37,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,PDD,PDD,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,102.65,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,LITE,LITE,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,622.5,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VST,VST,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,158.95,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,180.25,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,TSM,TSM,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,338.31,,ok,
 2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,MSFT,MSFT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,395.55,,ok,
-2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,CEG,CEG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,306.915,,ok,
-2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-13,,601.13,,ok,
-2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,INTC,INTC,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,48.18,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,40.37,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VST,VST,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,158.95,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-13,,322.16,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VRT,VRT,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-03-13,,258.88,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,322.16,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,PDD,PDD,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,102.65,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,AAOI,AAOI,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,96.81,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,EWY,EWY,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,124.15,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,WM,WM,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,238.53,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,GLW,GLW,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,129.12,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,593.72,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,VIAV,VIAV,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,29.97,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,SNDK,SNDK,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-13,,661.62,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,MSFT,MSFT,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-03-13,,395.55,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,CEG,CEG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,301.77,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,133.57,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,GOOG,GOOG,QQQ,rsi_bullish_divergence,Bullish RSI divergence,2026-03-13,,301.46,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-13,,593.72,,ok,
+2026-03-16T08:13:51Z,2026-03-16 04:13:51 EDT,stock,triggered,EWY,EWY,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-03-13,,124.15,,ok,
 2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,134.88,,ok,
+2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,INTC,INTC,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,48.18,,ok,
+2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-13,,601.13,,ok,
+2026-03-16T14:03:55Z,2026-03-16 10:03:55 EDT,stock,cleared,CEG,CEG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,306.915,,ok,
 2026-03-16T15:16:24Z,2026-03-16 11:16:24 EDT,stock,triggered,CEG,CEG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,305.095,,ok,
 2026-03-16T15:16:24Z,2026-03-16 11:16:24 EDT,stock,triggered,ANET,ANET,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-13,,132.66,,ok,
 2026-03-16T15:16:24Z,2026-03-16 11:16:24 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-13,,132.66,,ok,
