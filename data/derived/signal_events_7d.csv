@@ -16,8 +16,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-03-17T22:58:20Z,2026-03-17 18:58:20 EDT,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-17,,133.07,,ok,
 2026-03-17T22:58:20Z,2026-03-17 18:58:20 EDT,stock,triggered,VST,VST,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-17,,164.33,,ok,
 2026-03-17T22:58:20Z,2026-03-17 18:58:20 EDT,stock,triggered,ANET,ANET,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-17,,133.07,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-03-18T14:04:55Z,2026-03-18 10:04:55 EDT,stock,cleared,INTC,INTC,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-17,,44.76,,ok,RS_TREND_DOWN
 2026-03-18T14:04:55Z,2026-03-18 10:04:55 EDT,stock,triggered,GOOG,GOOG,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-17,,308.69,,ok,
+2026-03-18T14:04:55Z,2026-03-18 10:04:55 EDT,stock,cleared,INTC,INTC,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-17,,44.76,,ok,RS_TREND_DOWN
 2026-03-18T15:22:09Z,2026-03-18 11:22:09 EDT,stock,cleared,GOOG,GOOG,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-17,,309.3,,ok,
 2026-03-18T15:22:09Z,2026-03-18 11:22:09 EDT,stock,cleared,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-17,,135.55,,ok,
 2026-03-18T15:22:09Z,2026-03-18 11:22:09 EDT,stock,cleared,ANET,ANET,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-17,,135.55,,ok,KEEPING_PACE_OR_LEADING
@@ -33,19 +33,19 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-03-19T13:53:28Z,2026-03-19 09:53:28 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-18,,134.4112,,ok,
 2026-03-19T14:39:32Z,2026-03-19 10:39:32 EDT,stock,cleared,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-18,,134.895,,ok,
 2026-03-19T14:39:32Z,2026-03-19 10:39:32 EDT,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-18,,134.895,,ok,
-2026-03-19T16:37:45Z,2026-03-19 12:37:45 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-18,,134.29,,ok,
 2026-03-19T16:37:45Z,2026-03-19 12:37:45 EDT,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-18,,134.29,,ok,
+2026-03-19T16:37:45Z,2026-03-19 12:37:45 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-18,,134.29,,ok,
+2026-03-19T17:38:38Z,2026-03-19 13:38:38 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-18,,318.67,,ok,
 2026-03-19T17:38:38Z,2026-03-19 13:38:38 EDT,stock,cleared,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-18,,134.63,,ok,
 2026-03-19T17:38:38Z,2026-03-19 13:38:38 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-18,,318.67,,ok,
-2026-03-19T17:38:38Z,2026-03-19 13:38:38 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-18,,318.67,,ok,
 2026-03-19T18:30:31Z,2026-03-19 14:30:31 EDT,stock,cleared,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-18,,135.23,,ok,
 2026-03-19T22:48:32Z,2026-03-19 18:48:32 EDT,stock,cleared,VST,VST,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-19,,167.37,,ok,
 2026-03-19T22:48:32Z,2026-03-19 18:48:32 EDT,stock,cleared,VST,VST,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-19,,167.37,,ok,
 2026-03-19T22:48:32Z,2026-03-19 18:48:32 EDT,stock,cleared,TSM,TSM,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-19,,338.79,,ok,RS_TREND_DOWN
 2026-03-20T13:55:14Z,2026-03-20 09:55:14 EDT,stock,triggered,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-19,,134.13,,ok,
 2026-03-20T13:55:14Z,2026-03-20 09:55:14 EDT,stock,triggered,ANET,ANET,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-03-19,,134.13,,ok,
-2026-03-20T14:33:58Z,2026-03-20 10:33:58 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-19,,315.445,,ok,
 2026-03-20T14:33:58Z,2026-03-20 10:33:58 EDT,stock,triggered,VST,VST,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-19,,159.735,,ok,
+2026-03-20T14:33:58Z,2026-03-20 10:33:58 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-19,,315.445,,ok,
 2026-03-20T14:33:58Z,2026-03-20 10:33:58 EDT,stock,triggered,TSM,TSM,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-19,,329.93,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-03-20T14:33:58Z,2026-03-20 10:33:58 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-19,,315.445,,ok,
 2026-03-20T14:33:58Z,2026-03-20 10:33:58 EDT,stock,triggered,TSM,TSM,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-03-19,,329.93,,ok,
@@ -66,9 +66,9 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-03-23T13:45:13Z,2026-03-23 09:45:13 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-20,,176.955,,ok,
 2026-03-23T13:45:13Z,2026-03-23 09:45:13 EDT,stock,cleared,EWY,EWY,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-20,,131.69,,ok,
 2026-03-23T13:45:13Z,2026-03-23 09:45:13 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-20,,176.955,,ok,
+2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-20,,325.5201,,ok,
+2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-20,,325.5201,,ok,
+2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,triggered,ANET,ANET,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-20,,137.61,,ok,
 2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,cleared,ANET,ANET,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-20,,137.61,,ok,
 2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,cleared,ANET,ANET,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-03-20,,137.61,,ok,
-2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-20,,325.5201,,ok,
-2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-20,,325.5201,,ok,
-2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,triggered,ANET,ANET,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-03-20,,137.61,,ok,
 2026-03-23T14:42:20Z,2026-03-23 10:42:20 EDT,stock,cleared,TSM,TSM,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-20,,340.99,,ok,RS_TREND_DOWN
