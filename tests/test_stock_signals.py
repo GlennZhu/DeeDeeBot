@@ -214,6 +214,251 @@ def test_detect_bullish_rsi_divergence_true_and_false_controls() -> None:
     assert not stock_signals.detect_bullish_rsi_divergence(prices, rsi_not_bullish, left=3, right=3)
 
 
+def test_detect_bullish_weekly_macd_divergence_with_confirmation() -> None:
+    weekly_prices = _series(
+        [
+            120,
+            118,
+            116,
+            114,
+            112,
+            110,
+            108,
+            106,
+            104,
+            102,
+            100,
+            103,
+            106,
+            109,
+            112,
+            110,
+            108,
+            106,
+            104,
+            102,
+            99,
+            101,
+            104,
+            107,
+            110,
+            112,
+        ],
+        freq="W-FRI",
+    )
+    macd_line = _series(
+        [
+            0.8,
+            0.5,
+            0.2,
+            -0.2,
+            -0.5,
+            -0.8,
+            -1.0,
+            -1.3,
+            -1.6,
+            -1.8,
+            -2.0,
+            -1.6,
+            -1.2,
+            -0.8,
+            -0.4,
+            -0.6,
+            -0.8,
+            -0.9,
+            -1.0,
+            -1.1,
+            -1.0,
+            -0.8,
+            -0.5,
+            -0.2,
+            0.1,
+            0.3,
+        ],
+        start="2024-01-05",
+        freq="W-FRI",
+    )
+    signal_line = _series(
+        [
+            0.9,
+            0.7,
+            0.5,
+            0.2,
+            -0.1,
+            -0.3,
+            -0.5,
+            -0.7,
+            -0.9,
+            -1.1,
+            -1.3,
+            -1.25,
+            -1.1,
+            -0.95,
+            -0.8,
+            -0.75,
+            -0.8,
+            -0.85,
+            -0.9,
+            -0.95,
+            -0.98,
+            -0.9,
+            -0.7,
+            -0.4,
+            -0.1,
+            0.1,
+        ],
+        start="2024-01-05",
+        freq="W-FRI",
+    )
+    params = stock_signals.WeeklyMacdDivergenceParams(
+        lookback_weeks=52,
+        left=2,
+        right=2,
+        max_distance=2,
+        min_price_move_pct=0.005,
+        min_macd_delta=0.2,
+        min_pivot_separation=4,
+        max_pivot_separation=20,
+        confirmation_window=4,
+        require_macd_pivot_match=True,
+        bearish_min_macd_peak=0.0,
+        bullish_max_macd_trough=0.0,
+    )
+
+    assert stock_signals.detect_bullish_weekly_macd_divergence_with_params(
+        weekly_prices, macd_line, signal_line, params=params
+    )
+
+    no_cross_signal = signal_line.copy()
+    no_cross_signal.iloc[21:] = [-0.6, -0.3, 0.0, 0.2, 0.4]
+    assert not stock_signals.detect_bullish_weekly_macd_divergence_with_params(
+        weekly_prices, macd_line, no_cross_signal, params=params
+    )
+
+
+def test_detect_bearish_weekly_macd_divergence_with_confirmation() -> None:
+    weekly_prices = _series(
+        [
+            100,
+            102,
+            104,
+            106,
+            108,
+            110,
+            112,
+            114,
+            116,
+            118,
+            120,
+            117,
+            114,
+            111,
+            108,
+            110,
+            113,
+            116,
+            119,
+            121,
+            123,
+            120,
+            117,
+            114,
+            111,
+            109,
+        ],
+        start="2024-01-05",
+        freq="W-FRI",
+    )
+    macd_line = _series(
+        [
+            -0.2,
+            0.0,
+            0.3,
+            0.6,
+            0.9,
+            1.2,
+            1.4,
+            1.6,
+            1.8,
+            1.9,
+            2.0,
+            1.7,
+            1.4,
+            1.0,
+            0.6,
+            0.8,
+            1.0,
+            1.1,
+            1.2,
+            1.3,
+            1.2,
+            0.9,
+            0.6,
+            0.3,
+            0.0,
+            -0.2,
+        ],
+        start="2024-01-05",
+        freq="W-FRI",
+    )
+    signal_line = _series(
+        [
+            -0.1,
+            0.1,
+            0.3,
+            0.5,
+            0.7,
+            0.9,
+            1.1,
+            1.3,
+            1.5,
+            1.6,
+            1.7,
+            1.6,
+            1.4,
+            1.2,
+            1.0,
+            0.95,
+            0.98,
+            1.0,
+            1.05,
+            1.1,
+            1.1,
+            1.0,
+            0.9,
+            0.8,
+            0.7,
+            0.6,
+        ],
+        start="2024-01-05",
+        freq="W-FRI",
+    )
+    params = stock_signals.WeeklyMacdDivergenceParams(
+        lookback_weeks=52,
+        left=2,
+        right=2,
+        max_distance=2,
+        min_price_move_pct=0.005,
+        min_macd_delta=0.2,
+        min_pivot_separation=4,
+        max_pivot_separation=20,
+        confirmation_window=4,
+        require_macd_pivot_match=True,
+        bearish_min_macd_peak=0.0,
+        bullish_max_macd_trough=0.0,
+    )
+
+    assert stock_signals.detect_bearish_weekly_macd_divergence_with_params(
+        weekly_prices, macd_line, signal_line, params=params
+    )
+
+    no_cross_signal = signal_line.copy()
+    no_cross_signal.iloc[21:] = [0.5, 0.4, 0.2, 0.0, -0.2]
+    assert not stock_signals.detect_bearish_weekly_macd_divergence_with_params(
+        weekly_prices, macd_line, no_cross_signal, params=params
+    )
+
+
 def test_v2_filters_out_weak_bearish_divergence_signal() -> None:
     prices = _series(
         [
@@ -321,6 +566,33 @@ def test_compute_stock_signal_row_uses_v2_divergence_functions(monkeypatch) -> N
     assert row["rsi_bearish_divergence"] is False
 
 
+def test_compute_stock_signal_row_uses_weekly_macd_divergence_functions_on_daily_close_only(
+    monkeypatch,
+) -> None:
+    closes = _series([100.0 + i for i in range(260)])
+    observed: dict[str, float] = {}
+
+    def _bullish(series: pd.Series, params=stock_signals.WEEKLY_MACD_DIVERGENCE_V1_PARAMS) -> bool:
+        del params
+        observed["bullish_last"] = float(series.iloc[-1])
+        return True
+
+    def _bearish(series: pd.Series, params=stock_signals.WEEKLY_MACD_DIVERGENCE_V1_PARAMS) -> bool:
+        del params
+        observed["bearish_last"] = float(series.iloc[-1])
+        return False
+
+    monkeypatch.setattr(stock_signals, "detect_bullish_weekly_macd_divergence", _bullish)
+    monkeypatch.setattr(stock_signals, "detect_bearish_weekly_macd_divergence", _bearish)
+
+    row = stock_signals.compute_stock_signal_row("TEST", closes, latest_price=400.0)
+
+    assert row["weekly_macd_bullish_divergence"] is True
+    assert row["weekly_macd_bearish_divergence"] is False
+    assert observed["bullish_last"] == pytest.approx(float(closes.iloc[-1]))
+    assert observed["bearish_last"] == pytest.approx(float(closes.iloc[-1]))
+
+
 def test_compute_stock_signal_row_insufficient_data() -> None:
     closes = _series([100.0 + i for i in range(150)])
     row = stock_signals.compute_stock_signal_row("TEST", closes)
@@ -333,6 +605,8 @@ def test_compute_stock_signal_row_insufficient_data() -> None:
     assert row["exit_rsi_overbought"] is False
     assert row["rsi_bullish_divergence"] is False
     assert row["rsi_bearish_divergence"] is False
+    assert row["weekly_macd_bullish_divergence"] is False
+    assert row["weekly_macd_bearish_divergence"] is False
     assert row["squat_bull_market_precondition"] is False
     assert row["squat_price_dropping"] is False
     assert row["squat_ambush_near_ma100_or_ma200"] is False

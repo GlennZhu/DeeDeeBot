@@ -33,6 +33,24 @@ class RsiDivergenceParams:
     bullish_max_rsi_trough: float | None = None
 
 
+@dataclass(frozen=True)
+class WeeklyMacdDivergenceParams:
+    """Configuration for weekly MACD divergence + confirmation rules."""
+
+    lookback_weeks: int = 156
+    left: int = 3
+    right: int = 3
+    max_distance: int = 2
+    min_price_move_pct: float = 0.015
+    min_macd_delta: float = 0.0
+    min_pivot_separation: int = 6
+    max_pivot_separation: int = 26
+    confirmation_window: int = 4
+    require_macd_pivot_match: bool = True
+    bearish_min_macd_peak: float | None = 0.0
+    bullish_max_macd_trough: float | None = 0.0
+
+
 RSI_DIVERGENCE_V1_PARAMS = RsiDivergenceParams()
 RSI_DIVERGENCE_V2_PARAMS = RsiDivergenceParams(
     lookback=100,
@@ -47,6 +65,8 @@ RSI_DIVERGENCE_V2_PARAMS = RsiDivergenceParams(
     bullish_max_rsi_trough=46.0,
 )
 ACTIVE_RSI_DIVERGENCE_VERSION = "v2"
+WEEKLY_MACD_DIVERGENCE_V1_PARAMS = WeeklyMacdDivergenceParams()
+ACTIVE_WEEKLY_MACD_DIVERGENCE_VERSION = "v1"
 
 STOCK_TRIGGER_COLUMNS = [
     "entry_bullish_alignment",
@@ -56,6 +76,8 @@ STOCK_TRIGGER_COLUMNS = [
     "exit_rsi_overbought",
     "rsi_bullish_divergence",
     "rsi_bearish_divergence",
+    "weekly_macd_bullish_divergence",
+    "weekly_macd_bearish_divergence",
     "strong_sell_weak_strength",
     "squat_ambush_near_ma100_or_ma200",
     "squat_dca_below_ma100",
@@ -123,6 +145,30 @@ def compute_rsi14(series: pd.Series, period: int = 14) -> pd.Series:
     rsi = rsi.where(~((avg_loss == 0) & (avg_gain > 0)), 100.0)
     rsi = rsi.where(~((avg_loss == 0) & (avg_gain == 0)), 50.0)
     return rsi
+
+
+def compute_macd(
+    series: pd.Series,
+    fast_period: int = 12,
+    slow_period: int = 26,
+    signal_period: int = 9,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Compute MACD line, signal line, and histogram for a price series."""
+    clean = series.astype(float)
+    fast_ema = clean.ewm(span=fast_period, adjust=False, min_periods=fast_period).mean()
+    slow_ema = clean.ewm(span=slow_period, adjust=False, min_periods=slow_period).mean()
+    macd_line = fast_ema - slow_ema
+    signal_line = macd_line.ewm(span=signal_period, adjust=False, min_periods=signal_period).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+
+def _to_weekly_close(series: pd.Series) -> pd.Series:
+    """Resample a daily-close series into weekly Friday closes."""
+    if series.empty:
+        return pd.Series(dtype=float)
+    weekly = series.resample("W-FRI").last()
+    return weekly.dropna().astype(float)
 
 
 def _clean_price_series(series: pd.Series) -> pd.Series:
@@ -201,6 +247,56 @@ def _find_swing_low_positions(series: pd.Series, left: int = 3, right: int = 3) 
     return positions
 
 
+def _indicator_peak_for_price_peak(
+    peak_pos: int,
+    indicator_series: pd.Series,
+    indicator_peak_positions: list[int],
+    max_distance: int = 3,
+    allow_fallback_to_same_bar: bool = True,
+) -> float | None:
+    close_peaks = [
+        idx
+        for idx in indicator_peak_positions
+        if abs(idx - peak_pos) <= max_distance and pd.notna(indicator_series.iloc[idx])
+    ]
+    if close_peaks:
+        selected = min(close_peaks, key=lambda idx: abs(idx - peak_pos))
+        return float(indicator_series.iloc[selected])
+
+    if (
+        allow_fallback_to_same_bar
+        and 0 <= peak_pos < len(indicator_series)
+        and pd.notna(indicator_series.iloc[peak_pos])
+    ):
+        return float(indicator_series.iloc[peak_pos])
+    return None
+
+
+def _indicator_trough_for_price_trough(
+    trough_pos: int,
+    indicator_series: pd.Series,
+    indicator_trough_positions: list[int],
+    max_distance: int = 3,
+    allow_fallback_to_same_bar: bool = True,
+) -> float | None:
+    close_troughs = [
+        idx
+        for idx in indicator_trough_positions
+        if abs(idx - trough_pos) <= max_distance and pd.notna(indicator_series.iloc[idx])
+    ]
+    if close_troughs:
+        selected = min(close_troughs, key=lambda idx: abs(idx - trough_pos))
+        return float(indicator_series.iloc[selected])
+
+    if (
+        allow_fallback_to_same_bar
+        and 0 <= trough_pos < len(indicator_series)
+        and pd.notna(indicator_series.iloc[trough_pos])
+    ):
+        return float(indicator_series.iloc[trough_pos])
+    return None
+
+
 def _rsi_peak_for_price_peak(
     peak_pos: int,
     rsi_series: pd.Series,
@@ -208,18 +304,13 @@ def _rsi_peak_for_price_peak(
     max_distance: int = 3,
     allow_fallback_to_same_bar: bool = True,
 ) -> float | None:
-    close_peaks = [
-        idx
-        for idx in rsi_peak_positions
-        if abs(idx - peak_pos) <= max_distance and pd.notna(rsi_series.iloc[idx])
-    ]
-    if close_peaks:
-        selected = min(close_peaks, key=lambda idx: abs(idx - peak_pos))
-        return float(rsi_series.iloc[selected])
-
-    if allow_fallback_to_same_bar and 0 <= peak_pos < len(rsi_series) and pd.notna(rsi_series.iloc[peak_pos]):
-        return float(rsi_series.iloc[peak_pos])
-    return None
+    return _indicator_peak_for_price_peak(
+        peak_pos,
+        rsi_series,
+        rsi_peak_positions,
+        max_distance=max_distance,
+        allow_fallback_to_same_bar=allow_fallback_to_same_bar,
+    )
 
 
 def _rsi_trough_for_price_trough(
@@ -229,18 +320,13 @@ def _rsi_trough_for_price_trough(
     max_distance: int = 3,
     allow_fallback_to_same_bar: bool = True,
 ) -> float | None:
-    close_troughs = [
-        idx
-        for idx in rsi_trough_positions
-        if abs(idx - trough_pos) <= max_distance and pd.notna(rsi_series.iloc[idx])
-    ]
-    if close_troughs:
-        selected = min(close_troughs, key=lambda idx: abs(idx - trough_pos))
-        return float(rsi_series.iloc[selected])
-
-    if allow_fallback_to_same_bar and 0 <= trough_pos < len(rsi_series) and pd.notna(rsi_series.iloc[trough_pos]):
-        return float(rsi_series.iloc[trough_pos])
-    return None
+    return _indicator_trough_for_price_trough(
+        trough_pos,
+        rsi_series,
+        rsi_trough_positions,
+        max_distance=max_distance,
+        allow_fallback_to_same_bar=allow_fallback_to_same_bar,
+    )
 
 
 def detect_bullish_rsi_divergence_with_params(
@@ -421,6 +507,240 @@ def detect_bearish_rsi_divergence_v2(price_series: pd.Series, rsi_series: pd.Ser
     return detect_bearish_rsi_divergence_with_params(price_series, rsi_series, params=RSI_DIVERGENCE_V2_PARAMS)
 
 
+def _has_bullish_crossover(
+    oscillator: pd.Series,
+    signal_line: pd.Series,
+    start_pos: int,
+    end_pos: int,
+) -> bool:
+    if oscillator.empty or signal_line.empty:
+        return False
+    if end_pos < 1:
+        return False
+
+    first = max(1, int(start_pos))
+    last = min(int(end_pos), len(oscillator) - 1, len(signal_line) - 1)
+    if first > last:
+        return False
+
+    for idx in range(first, last + 1):
+        prev_osc = oscillator.iloc[idx - 1]
+        prev_sig = signal_line.iloc[idx - 1]
+        curr_osc = oscillator.iloc[idx]
+        curr_sig = signal_line.iloc[idx]
+        if any(pd.isna(value) for value in [prev_osc, prev_sig, curr_osc, curr_sig]):
+            continue
+        if float(prev_osc) <= float(prev_sig) and float(curr_osc) > float(curr_sig):
+            return True
+    return False
+
+
+def _has_bearish_crossover(
+    oscillator: pd.Series,
+    signal_line: pd.Series,
+    start_pos: int,
+    end_pos: int,
+) -> bool:
+    if oscillator.empty or signal_line.empty:
+        return False
+    if end_pos < 1:
+        return False
+
+    first = max(1, int(start_pos))
+    last = min(int(end_pos), len(oscillator) - 1, len(signal_line) - 1)
+    if first > last:
+        return False
+
+    for idx in range(first, last + 1):
+        prev_osc = oscillator.iloc[idx - 1]
+        prev_sig = signal_line.iloc[idx - 1]
+        curr_osc = oscillator.iloc[idx]
+        curr_sig = signal_line.iloc[idx]
+        if any(pd.isna(value) for value in [prev_osc, prev_sig, curr_osc, curr_sig]):
+            continue
+        if float(prev_osc) >= float(prev_sig) and float(curr_osc) < float(curr_sig):
+            return True
+    return False
+
+
+def detect_bullish_weekly_macd_divergence_with_params(
+    weekly_price_series: pd.Series,
+    macd_line: pd.Series,
+    signal_line: pd.Series,
+    params: WeeklyMacdDivergenceParams,
+) -> bool:
+    """Detect weekly bullish MACD divergence and post-divergence crossover confirmation."""
+    if weekly_price_series.empty or macd_line.empty or signal_line.empty:
+        return False
+
+    lookback_weeks = max(1, int(params.lookback_weeks))
+    left = max(1, int(params.left))
+    right = max(1, int(params.right))
+    max_distance = max(0, int(params.max_distance))
+    min_price_move_pct = max(0.0, float(params.min_price_move_pct))
+    min_macd_delta = max(0.0, float(params.min_macd_delta))
+    min_pivot_separation = max(1, int(params.min_pivot_separation))
+    max_pivot_separation = max(min_pivot_separation, int(params.max_pivot_separation))
+    confirmation_window = max(0, int(params.confirmation_window))
+    max_macd_trough = params.bullish_max_macd_trough
+
+    price_recent = weekly_price_series.iloc[-lookback_weeks:].astype(float)
+    macd_recent = macd_line.reindex(price_recent.index).astype(float)
+    signal_recent = signal_line.reindex(price_recent.index).astype(float)
+
+    if len(price_recent) < (left + right + 2):
+        return False
+
+    price_troughs = _find_swing_low_positions(price_recent, left=left, right=right)
+    if len(price_troughs) < 2:
+        return False
+
+    macd_troughs = _find_swing_low_positions(macd_recent, left=left, right=right)
+    for idx in range(len(price_troughs) - 1, 0, -1):
+        p1_pos = price_troughs[idx - 1]
+        p2_pos = price_troughs[idx]
+        pivot_distance = p2_pos - p1_pos
+        if pivot_distance < min_pivot_separation or pivot_distance > max_pivot_separation:
+            continue
+
+        p1 = float(price_recent.iloc[p1_pos])
+        p2 = float(price_recent.iloc[p2_pos])
+        if not p2 < p1:
+            continue
+        if _price_move_pct(p1, p2) < min_price_move_pct:
+            continue
+
+        m1 = _indicator_trough_for_price_trough(
+            p1_pos,
+            macd_recent,
+            macd_troughs,
+            max_distance=max_distance,
+            allow_fallback_to_same_bar=not params.require_macd_pivot_match,
+        )
+        m2 = _indicator_trough_for_price_trough(
+            p2_pos,
+            macd_recent,
+            macd_troughs,
+            max_distance=max_distance,
+            allow_fallback_to_same_bar=not params.require_macd_pivot_match,
+        )
+        if m1 is None or m2 is None:
+            continue
+        if max_macd_trough is not None and max(m1, m2) > float(max_macd_trough):
+            continue
+        if not (m2 > m1 and (m2 - m1) >= min_macd_delta):
+            continue
+
+        cross_start = p2_pos + 1
+        cross_end = p2_pos + confirmation_window
+        if _has_bullish_crossover(macd_recent, signal_recent, start_pos=cross_start, end_pos=cross_end):
+            return True
+
+    return False
+
+
+def detect_bearish_weekly_macd_divergence_with_params(
+    weekly_price_series: pd.Series,
+    macd_line: pd.Series,
+    signal_line: pd.Series,
+    params: WeeklyMacdDivergenceParams,
+) -> bool:
+    """Detect weekly bearish MACD divergence and post-divergence crossover confirmation."""
+    if weekly_price_series.empty or macd_line.empty or signal_line.empty:
+        return False
+
+    lookback_weeks = max(1, int(params.lookback_weeks))
+    left = max(1, int(params.left))
+    right = max(1, int(params.right))
+    max_distance = max(0, int(params.max_distance))
+    min_price_move_pct = max(0.0, float(params.min_price_move_pct))
+    min_macd_delta = max(0.0, float(params.min_macd_delta))
+    min_pivot_separation = max(1, int(params.min_pivot_separation))
+    max_pivot_separation = max(min_pivot_separation, int(params.max_pivot_separation))
+    confirmation_window = max(0, int(params.confirmation_window))
+    min_macd_peak = params.bearish_min_macd_peak
+
+    price_recent = weekly_price_series.iloc[-lookback_weeks:].astype(float)
+    macd_recent = macd_line.reindex(price_recent.index).astype(float)
+    signal_recent = signal_line.reindex(price_recent.index).astype(float)
+
+    if len(price_recent) < (left + right + 2):
+        return False
+
+    price_peaks = _find_swing_high_positions(price_recent, left=left, right=right)
+    if len(price_peaks) < 2:
+        return False
+
+    macd_peaks = _find_swing_high_positions(macd_recent, left=left, right=right)
+    for idx in range(len(price_peaks) - 1, 0, -1):
+        p1_pos = price_peaks[idx - 1]
+        p2_pos = price_peaks[idx]
+        pivot_distance = p2_pos - p1_pos
+        if pivot_distance < min_pivot_separation or pivot_distance > max_pivot_separation:
+            continue
+
+        p1 = float(price_recent.iloc[p1_pos])
+        p2 = float(price_recent.iloc[p2_pos])
+        if not p2 > p1:
+            continue
+        if _price_move_pct(p1, p2) < min_price_move_pct:
+            continue
+
+        m1 = _indicator_peak_for_price_peak(
+            p1_pos,
+            macd_recent,
+            macd_peaks,
+            max_distance=max_distance,
+            allow_fallback_to_same_bar=not params.require_macd_pivot_match,
+        )
+        m2 = _indicator_peak_for_price_peak(
+            p2_pos,
+            macd_recent,
+            macd_peaks,
+            max_distance=max_distance,
+            allow_fallback_to_same_bar=not params.require_macd_pivot_match,
+        )
+        if m1 is None or m2 is None:
+            continue
+        if min_macd_peak is not None and max(m1, m2) < float(min_macd_peak):
+            continue
+        if not (m2 < m1 and (m1 - m2) >= min_macd_delta):
+            continue
+
+        cross_start = p2_pos + 1
+        cross_end = p2_pos + confirmation_window
+        if _has_bearish_crossover(macd_recent, signal_recent, start_pos=cross_start, end_pos=cross_end):
+            return True
+
+    return False
+
+
+def detect_bullish_weekly_macd_divergence(
+    daily_price_series: pd.Series,
+    params: WeeklyMacdDivergenceParams = WEEKLY_MACD_DIVERGENCE_V1_PARAMS,
+) -> bool:
+    """Detect bullish weekly MACD divergence from a daily-close series."""
+    clean = _clean_price_series(daily_price_series)
+    weekly_close = _to_weekly_close(clean)
+    if weekly_close.empty:
+        return False
+    macd_line, signal_line, _ = compute_macd(weekly_close)
+    return detect_bullish_weekly_macd_divergence_with_params(weekly_close, macd_line, signal_line, params=params)
+
+
+def detect_bearish_weekly_macd_divergence(
+    daily_price_series: pd.Series,
+    params: WeeklyMacdDivergenceParams = WEEKLY_MACD_DIVERGENCE_V1_PARAMS,
+) -> bool:
+    """Detect bearish weekly MACD divergence from a daily-close series."""
+    clean = _clean_price_series(daily_price_series)
+    weekly_close = _to_weekly_close(clean)
+    if weekly_close.empty:
+        return False
+    macd_line, signal_line, _ = compute_macd(weekly_close)
+    return detect_bearish_weekly_macd_divergence_with_params(weekly_close, macd_line, signal_line, params=params)
+
+
 def _relative_strength_signals(
     stock_series: pd.Series,
     stock_price: float,
@@ -581,6 +901,10 @@ def compute_stock_signal_row(
     exit_rsi_overbought = _is_valid_number(rsi14) and float(rsi14) > 80.0
     rsi_bullish_divergence = detect_bullish_rsi_divergence_v2(evaluated, rsi14_series)
     rsi_bearish_divergence = detect_bearish_rsi_divergence_v2(evaluated, rsi14_series)
+    # Weekly MACD divergence is intentionally based on daily closes only
+    # so intraday quote updates do not flicker weekly-chart signals.
+    weekly_macd_bullish_divergence = detect_bullish_weekly_macd_divergence(clean)
+    weekly_macd_bearish_divergence = detect_bearish_weekly_macd_divergence(clean)
 
     squat_bull_market_precondition = _safe_gt(daily_sma200, prev_sma200) or _safe_gt(daily_sma50, daily_sma200)
     squat_price_dropping = _safe_lt(price, prev_price)
@@ -671,6 +995,8 @@ def compute_stock_signal_row(
         exit_rsi_overbought = False
         rsi_bullish_divergence = False
         rsi_bearish_divergence = False
+        weekly_macd_bullish_divergence = False
+        weekly_macd_bearish_divergence = False
         strong_sell_weak_strength = False
         squat_bull_market_precondition = False
         squat_price_dropping = False
@@ -728,6 +1054,8 @@ def compute_stock_signal_row(
         "exit_rsi_overbought": bool(exit_rsi_overbought),
         "rsi_bullish_divergence": bool(rsi_bullish_divergence),
         "rsi_bearish_divergence": bool(rsi_bearish_divergence),
+        "weekly_macd_bullish_divergence": bool(weekly_macd_bullish_divergence),
+        "weekly_macd_bearish_divergence": bool(weekly_macd_bearish_divergence),
         "strong_sell_weak_strength": bool(strong_sell_weak_strength),
         "squat_ambush_near_ma100_or_ma200": bool(squat_ambush_near_ma100_or_ma200),
         "squat_dca_below_ma100": bool(squat_dca_below_ma100),

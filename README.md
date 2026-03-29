@@ -52,14 +52,22 @@ For each watched ticker, the pipeline checks:
   - minimum price/RSI delta between pivots,
   - RSI regime guardrails (bearish peaks should be elevated, bullish troughs should be depressed).
 
-4. Comparative relative strength vs benchmark (`benchmark` per ticker in watchlist):
+4. Weekly MACD divergence (confirmed weekly setup + trigger):
+- Weekly close series (`W-FRI`) with MACD(12,26,9)
+- Bullish setup: price lower low + MACD higher low; bearish setup: price higher high + MACD lower high
+- Uses confirmed swing pivots, minimum/maximum pivot spacing, and minimum price move filters
+- Signal only triggers after confirmation crossover within the next 4 weekly bars:
+  - bullish: MACD crosses above signal
+  - bearish: MACD crosses below signal
+
+5. Comparative relative strength vs benchmark (`benchmark` per ticker in watchlist):
 - Structural divergence: benchmark `> MA50` while stock `< MA50`
 - RS trend: `RS_Ratio = Stock / Benchmark`, warning when `RS_Ratio < MA20(RS_Ratio)`
 - 1M alpha: `stock_21d_return - benchmark_21d_return`
 - **Strong sell trigger** when the stock is underperforming its benchmark (`structural_divergence` or `alpha_1m < -5%`)
 - For `QQQ` itself, benchmark-relative alerting is skipped (no benchmark-related trigger alerts).
 
-5. "Squat" buy-zone alerts (bull-market pullback logic):
+6. "Squat" buy-zone alerts (bull-market pullback logic):
 - Precondition: `MA200 rising` OR `SMA50 > SMA200`
 - Gap tracking: `gap_to_ma = (price - ma) / ma` for MA100 and MA200
 - **Ambush alert** (`🟢 Approaching Buy Zone`) when price is dropping and sits `2%-3% above` MA100 or MA200
