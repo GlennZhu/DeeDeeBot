@@ -351,6 +351,24 @@ def _is_recent_timestamp(value: object, days: int) -> bool:
     return ts >= cutoff
 
 
+def _macro_freshness_timestamp(snapshot_row: pd.Series | None, signal_row: pd.Series | None) -> object:
+    for row in (snapshot_row, signal_row):
+        if row is None:
+            continue
+        as_of_date = row.get("as_of_date")
+        if not pd.isna(as_of_date):
+            return as_of_date
+
+    for row in (snapshot_row, signal_row):
+        if row is None:
+            continue
+        last_updated_utc = row.get("last_updated_utc")
+        if not pd.isna(last_updated_utc):
+            return last_updated_utc
+
+    return None
+
+
 def _apply_history_window(frame: pd.DataFrame, years: int | None) -> pd.DataFrame:
     if frame.empty or years is None or "date" not in frame.columns:
         return frame
@@ -487,12 +505,8 @@ def _render_macro_tab(selected_window: str) -> None:
         signal_row = metric_signal.iloc[0] if not metric_signal.empty else None
         snapshot_row = metric_snapshot.iloc[0] if not metric_snapshot.empty else None
 
-        metric_last_updated = None
-        if snapshot_row is not None and "last_updated_utc" in metric_snapshot.columns:
-            metric_last_updated = snapshot_row.get("last_updated_utc")
-        if pd.isna(metric_last_updated) and signal_row is not None and "last_updated_utc" in metric_signal.columns:
-            metric_last_updated = signal_row.get("last_updated_utc")
-        if _is_recent_timestamp(metric_last_updated, days=MACRO_NEW_WINDOW_DAYS):
+        metric_freshness_ts = _macro_freshness_timestamp(snapshot_row, signal_row)
+        if _is_recent_timestamp(metric_freshness_ts, days=MACRO_NEW_WINDOW_DAYS):
             card.markdown(_signal_badge("NEW", MACRO_NEW_BADGE_COLOR), unsafe_allow_html=True)
 
         if metric_key == "m2":

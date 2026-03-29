@@ -3,6 +3,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import pandas as pd
+
 import app
 
 
@@ -94,3 +96,41 @@ def test_main_clears_cache_when_data_signature_changes(monkeypatch) -> None:
 
     assert fake_st.cache_data.clear_calls == 2
     assert calls == ["macro:15Y", "stock", "history"] * 3
+
+
+def test_macro_freshness_timestamp_prefers_as_of_date_over_last_updated() -> None:
+    snapshot_row = pd.Series(
+        {
+            "as_of_date": pd.Timestamp("2025-10-31"),
+            "last_updated_utc": pd.Timestamp("2026-03-27T21:04:27Z"),
+        }
+    )
+    signal_row = pd.Series(
+        {
+            "as_of_date": pd.Timestamp("2025-10-31"),
+            "last_updated_utc": pd.Timestamp("2026-03-27T21:04:27Z"),
+        }
+    )
+
+    freshness_ts = app._macro_freshness_timestamp(snapshot_row, signal_row)
+
+    assert freshness_ts == pd.Timestamp("2025-10-31")
+
+
+def test_macro_freshness_timestamp_falls_back_to_last_updated() -> None:
+    snapshot_row = pd.Series(
+        {
+            "as_of_date": pd.NaT,
+            "last_updated_utc": pd.Timestamp("2026-03-27T21:04:27Z"),
+        }
+    )
+    signal_row = pd.Series(
+        {
+            "as_of_date": pd.NaT,
+            "last_updated_utc": pd.Timestamp("2026-03-27T21:04:27Z"),
+        }
+    )
+
+    freshness_ts = app._macro_freshness_timestamp(snapshot_row, signal_row)
+
+    assert freshness_ts == pd.Timestamp("2026-03-27T21:04:27Z")
