@@ -94,6 +94,11 @@ def test_market_data_provider_auto_uses_public_when_schwab_creds_missing(monkeyp
     assert data_fetch._market_data_provider() == data_fetch.MARKET_DATA_PROVIDER_PUBLIC
 
 
+def test_extract_api_error_summary_prefers_json_fields() -> None:
+    raw = '{"error":"invalid_grant","error_description":"The refresh token is invalid"}'
+    assert data_fetch._extract_api_error_summary(raw) == "invalid_grant | The refresh token is invalid"
+
+
 def test_fetch_fred_series_retries_timeout_then_succeeds(monkeypatch) -> None:
     calls = {"count": 0}
     sleeps: list[float] = []

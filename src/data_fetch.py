@@ -7,6 +7,7 @@ import io
 import json
 import os
 import base64
+import gzip
 import time
 from datetime import datetime, timezone
 from typing import Any
@@ -77,6 +78,48 @@ _SCHWAB_TOKEN_CACHE: dict[str, Any] = {
     "access_token": "",
     "expires_at_utc": None,
 }
+
+
+def _decode_http_error_body(exc: error.HTTPError) -> str:
+    raw_bytes = b""
+    try:
+        raw_bytes = exc.read()
+    except Exception:
+        raw_bytes = b""
+    if not raw_bytes:
+        return str(getattr(exc, "reason", "")).strip()
+
+    decoded = raw_bytes.decode("utf-8", errors="replace")
+    if decoded and "\ufffd" not in decoded and decoded.strip():
+        return decoded.strip()
+
+    try:
+        inflated = gzip.decompress(raw_bytes)
+        decoded = inflated.decode("utf-8", errors="replace")
+        if decoded.strip():
+            return decoded.strip()
+    except Exception:
+        pass
+
+    return decoded.strip() or repr(raw_bytes[:200])
+
+
+def _extract_api_error_summary(raw_text: str) -> str:
+    clean = str(raw_text).strip()
+    if not clean:
+        return ""
+    try:
+        parsed = json.loads(clean)
+    except Exception:
+        return clean
+    if not isinstance(parsed, dict):
+        return clean
+    err = str(parsed.get("error", "")).strip()
+    desc = str(parsed.get("error_description", "")).strip()
+    parts = [part for part in [err, desc] if part]
+    if parts:
+        return " | ".join(parts)
+    return clean
 
 
 def _normalize_series(series: pd.Series, series_name: str) -> pd.Series:
@@ -488,7 +531,7 @@ def _schwab_refresh_access_token() -> str:
         with request.urlopen(req, timeout=_schwab_timeout_seconds()) as response:
             raw_body = response.read().decode("utf-8", errors="replace")
     except error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
+        body = _extract_api_error_summary(_decode_http_error_body(exc))
         raise MarketDataError(
             f"Failed to refresh Schwab access token (HTTP {exc.code}): {body or exc.reason}",
             provider="schwab",
@@ -540,11 +583,7 @@ def _schwab_access_token() -> str:
 
 def _schwab_raise_http_error(exc: error.HTTPError, *, endpoint: str, symbol: str = "") -> None:
     status = int(getattr(exc, "code", 0) or 0)
-    body = ""
-    try:
-        body = exc.read().decode("utf-8", errors="replace")
-    except Exception:
-        body = ""
+    body = _extract_api_error_summary(_decode_http_error_body(exc))
 
     provider = "schwab"
     symbol_suffix = f" symbol={symbol}" if symbol else ""

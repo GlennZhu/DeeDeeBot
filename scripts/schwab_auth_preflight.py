@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import json
 import os
 import sys
+import time
 from urllib import error, parse, request
 
 SCHWAB_BASE_URL = "https://api.schwabapi.com"
@@ -38,6 +40,76 @@ def _timeout_seconds() -> int:
     except ValueError:
         return 12
     return max(3, parsed)
+
+
+def _max_attempts() -> int:
+    raw = str(os.getenv("SCHWAB_FETCH_MAX_ATTEMPTS", "")).strip()
+    if not raw:
+        return 3
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 3
+    return max(1, parsed)
+
+
+def _retry_backoff_seconds() -> float:
+    raw = str(os.getenv("SCHWAB_FETCH_RETRY_BACKOFF_SECONDS", "")).strip()
+    if not raw:
+        return 0.75
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return 0.75
+    return max(0.0, parsed)
+
+
+def _decode_http_body(exc: error.HTTPError) -> str:
+    raw_bytes = b""
+    try:
+        raw_bytes = exc.read()
+    except Exception:
+        raw_bytes = b""
+    if not raw_bytes:
+        return str(getattr(exc, "reason", "")).strip()
+
+    decoded = ""
+    try:
+        decoded = raw_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        decoded = ""
+    if decoded and "\ufffd" not in decoded and decoded.strip():
+        return decoded.strip()
+
+    try:
+        inflated = gzip.decompress(raw_bytes)
+        decoded = inflated.decode("utf-8", errors="replace")
+        if decoded.strip():
+            return decoded.strip()
+    except Exception:
+        pass
+
+    return decoded.strip() or repr(raw_bytes[:200])
+
+
+def _http_status_error_message(exc: error.HTTPError) -> str:
+    body = _decode_http_body(exc)
+    parsed_json: dict[str, object] | None = None
+    try:
+        parsed = json.loads(body)
+        if isinstance(parsed, dict):
+            parsed_json = parsed
+    except Exception:
+        parsed_json = None
+
+    if parsed_json is not None:
+        err = str(parsed_json.get("error", "")).strip()
+        desc = str(parsed_json.get("error_description", "")).strip()
+        fields = [part for part in [err, desc] if part]
+        if fields:
+            return " | ".join(fields)
+
+    return body or str(getattr(exc, "reason", "")).strip() or "unknown_error"
 
 
 def main() -> int:
@@ -73,24 +145,51 @@ def main() -> int:
         method="POST",
     )
 
-    try:
-        with request.urlopen(req, timeout=_timeout_seconds()) as response:
-            raw_body = response.read().decode("utf-8", errors="replace")
-    except error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace") if hasattr(exc, "read") else ""
-        print(
-            "schwab_auth_preflight_failed "
-            f"http_status={exc.code} message={body or exc.reason}",
-            file=sys.stderr,
-        )
-        return 1
-    except Exception as exc:
-        print(
-            "schwab_auth_preflight_failed "
-            f"request_error={exc}",
-            file=sys.stderr,
-        )
-        return 1
+    attempts = _max_attempts()
+    backoff_seconds = _retry_backoff_seconds()
+    raw_body = ""
+    for attempt in range(attempts):
+        try:
+            with request.urlopen(req, timeout=_timeout_seconds()) as response:
+                raw_body = response.read().decode("utf-8", errors="replace")
+            break
+        except error.HTTPError as exc:
+            status = int(getattr(exc, "code", 0) or 0)
+            message = _http_status_error_message(exc)
+            retryable_http = status in {408, 429, 500, 502, 503, 504}
+            is_last_attempt = attempt >= (attempts - 1)
+            if is_last_attempt or not retryable_http:
+                print(
+                    "schwab_auth_preflight_failed "
+                    f"http_status={status} message={message}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                "schwab_auth_preflight_retrying "
+                f"attempt={attempt + 1}/{attempts} http_status={status} message={message}",
+                file=sys.stderr,
+            )
+            sleep_seconds = backoff_seconds * (2**attempt)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+        except Exception as exc:
+            is_last_attempt = attempt >= (attempts - 1)
+            if is_last_attempt:
+                print(
+                    "schwab_auth_preflight_failed "
+                    f"request_error={exc}",
+                    file=sys.stderr,
+                )
+                return 1
+            print(
+                "schwab_auth_preflight_retrying "
+                f"attempt={attempt + 1}/{attempts} request_error={exc}",
+                file=sys.stderr,
+            )
+            sleep_seconds = backoff_seconds * (2**attempt)
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
 
     try:
         parsed = json.loads(raw_body)
