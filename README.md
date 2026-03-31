@@ -144,6 +144,8 @@ Optional environment knobs:
 - `FRED_FETCH_RETRY_BACKOFF_SECONDS` (default `1.0`)
 - `SCHWAB_ACCESS_TOKEN` (optional local override)
 - `SCHWAB_REFRESH_TOKEN`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET` (optional token refresh flow)
+- `SCHWAB_FETCH_MAX_ATTEMPTS` (default `3`; retries retryable Schwab upstream failures)
+- `SCHWAB_FETCH_RETRY_BACKOFF_SECONDS` (default `0.75`)
 - `SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST` (default `200`)
 - `WATCHLIST_CIRCUIT_PREFETCH_MAX_COVERAGE` (default `0.05`)
 - `WATCHLIST_CIRCUIT_PROBE_COUNT` (default `4`)
@@ -154,8 +156,10 @@ Optional environment knobs:
 Use the semi-automated helper to rotate `SCHWAB_REFRESH_TOKEN` (expected cadence is about every 7 days):
 
 ```bash
-./scripts/rotate_schwab_token.sh --repo <owner>/<repo>
+./scripts/rotate_schwab_token.sh
 ```
+
+By default, the script updates both your local env file token and GitHub secret `SCHWAB_REFRESH_TOKEN`.
 
 The script auto-loads `.env.schwab.local` (ignored by git because `.env.*` is in `.gitignore`).
 Create that file locally:
@@ -169,10 +173,12 @@ GH_REPO='owner/repo'
 EOF
 ```
 
-You can also point to a custom file:
+You can also point to a custom file, pin a specific repo, or skip GitHub secret update:
 
 ```bash
 ./scripts/rotate_schwab_token.sh --env-file /path/to/local.env
+./scripts/rotate_schwab_token.sh --repo <owner>/<repo>
+./scripts/rotate_schwab_token.sh --no-github-secret
 ```
 
 The helper will:
@@ -180,11 +186,12 @@ The helper will:
 - Open/print the Schwab authorize URL
 - Prompt for the full browser redirect URL
 - Exchange code for tokens and validate `refresh_token` exists
-- Update repository secret `SCHWAB_REFRESH_TOKEN` using `gh secret set`
+- Update `SCHWAB_REFRESH_TOKEN` in the selected env file
+- Update repository secret `SCHWAB_REFRESH_TOKEN` using `gh secret set` (auto-detected repo, or `--repo`/`GH_REPO`)
 
 One-time prerequisites:
 
-- Install GitHub CLI (`gh`)
+- Install GitHub CLI (`gh`) unless you plan to always use `--no-github-secret`
 - Authenticate once with secret-management permissions: `gh auth login`
 
 If token auth is broken, stock refresh workflows fail with provider-auth errors; rotate Schwab credentials and rerun.
@@ -217,4 +224,14 @@ Notifications:
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 - Optionally set `FRED_API_KEY` as a GitHub repository secret to use official FRED API responses instead of keyless graph CSV.
 
-Workflow `update_stock_intraday.yml` is triggered every 15 minutes in UTC, then a runtime Eastern-time guard allows execution only on weekdays during the intraday session window (**4:00 AM ET through 8:00 PM ET**, inclusive end-of-session slot). It executes `python -m src.pipeline --stock-only` to keep watchlist alerts fresh intraday.
+Workflow `update_stock_intraday.yml` is triggered every 15 minutes in UTC, then a runtime Eastern-time guard allows execution only on weekdays during the intraday session window (**4:00 AM ET through 8:00 PM ET**, inclusive end-of-session slot). It runs a Schwab auth preflight and then executes `python -m src.pipeline --stock-only` with `MARKET_DATA_PROVIDER=schwab` to keep watchlist alerts fresh intraday.
+
+Required repository secrets for Schwab stock workflow:
+
+- `SCHWAB_CLIENT_ID`
+- `SCHWAB_CLIENT_SECRET`
+- `SCHWAB_REFRESH_TOKEN`
+
+Optional:
+
+- `SCHWAB_BASE_URL` (defaults to `https://api.schwabapi.com`)

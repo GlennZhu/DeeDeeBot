@@ -47,6 +47,8 @@ SCHWAB_QUOTES_PATH = "/marketdata/v1/quotes"
 SCHWAB_QUOTES_MAX_SYMBOLS_PER_REQUEST = 200
 SCHWAB_REQUEST_TIMEOUT_SECONDS = 12
 SCHWAB_YEARS_LOOKBACK = 20
+SCHWAB_FETCH_MAX_ATTEMPTS = 3
+SCHWAB_FETCH_RETRY_BACKOFF_SECONDS = 0.75
 FRED_GRAPH_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
 FRED_API_OBSERVATIONS_URL = "https://api.stlouisfed.org/fred/series/observations"
 FRED_REQUEST_TIMEOUT_SECONDS = 45
@@ -203,8 +205,11 @@ def _market_data_provider() -> str:
     if configured not in {MARKET_DATA_PROVIDER_AUTO, MARKET_DATA_PROVIDER_PUBLIC, MARKET_DATA_PROVIDER_SCHWAB}:
         configured = MARKET_DATA_PROVIDER_AUTO
     if configured == MARKET_DATA_PROVIDER_AUTO:
-        token = str(os.getenv("SCHWAB_ACCESS_TOKEN", "")).strip()
-        if token:
+        access_token = str(os.getenv("SCHWAB_ACCESS_TOKEN", "")).strip()
+        refresh_token = str(os.getenv("SCHWAB_REFRESH_TOKEN", "")).strip()
+        client_id = str(os.getenv("SCHWAB_CLIENT_ID", "")).strip()
+        client_secret = str(os.getenv("SCHWAB_CLIENT_SECRET", "")).strip()
+        if access_token or (refresh_token and client_id and client_secret):
             return MARKET_DATA_PROVIDER_SCHWAB
         return MARKET_DATA_PROVIDER_PUBLIC
     return configured
@@ -226,6 +231,28 @@ def _schwab_timeout_seconds() -> int:
     except ValueError:
         return SCHWAB_REQUEST_TIMEOUT_SECONDS
     return max(3, parsed)
+
+
+def _schwab_max_attempts() -> int:
+    raw = str(os.getenv("SCHWAB_FETCH_MAX_ATTEMPTS", "")).strip()
+    if not raw:
+        return SCHWAB_FETCH_MAX_ATTEMPTS
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return SCHWAB_FETCH_MAX_ATTEMPTS
+    return max(1, parsed)
+
+
+def _schwab_retry_backoff_seconds() -> float:
+    raw = str(os.getenv("SCHWAB_FETCH_RETRY_BACKOFF_SECONDS", "")).strip()
+    if not raw:
+        return SCHWAB_FETCH_RETRY_BACKOFF_SECONDS
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return SCHWAB_FETCH_RETRY_BACKOFF_SECONDS
+    return max(0.0, parsed)
 
 
 def _fred_timeout_seconds() -> int:
@@ -559,51 +586,85 @@ def _schwab_raise_http_error(exc: error.HTTPError, *, endpoint: str, symbol: str
 
 
 def _schwab_get_json(path: str, query: dict[str, Any]) -> Any:
-    token = _schwab_access_token()
     query_items = {k: v for k, v in query.items() if v is not None and str(v) != ""}
     encoded_query = parse.urlencode(query_items, doseq=True)
     url = f"{_schwab_base_url()}{path}"
     if encoded_query:
         url = f"{url}?{encoded_query}"
+    max_attempts = _schwab_max_attempts()
+    retry_backoff_seconds = _schwab_retry_backoff_seconds()
 
-    req = request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-            "User-Agent": UNIVERSE_FETCH_USER_AGENT,
-        },
-        method="GET",
-    )
-    try:
-        with request.urlopen(req, timeout=_schwab_timeout_seconds()) as response:
-            payload = response.read().decode("utf-8", errors="replace")
-    except error.HTTPError as exc:
-        _schwab_raise_http_error(exc, endpoint=path)
-    except error.URLError as exc:
-        raise MarketDataError(
-            f"Schwab upstream unreachable endpoint={path}: {exc}",
-            provider="schwab",
-            error_type="upstream_unreachable",
-            retryable=True,
-        ) from exc
-    except TimeoutError as exc:
-        raise MarketDataError(
-            f"Schwab request timed out endpoint={path}: {exc}",
-            provider="schwab",
-            error_type="upstream_unreachable",
-            retryable=True,
-        ) from exc
+    for attempt in range(max_attempts):
+        try:
+            token = _schwab_access_token()
+            req = request.Request(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                    "User-Agent": UNIVERSE_FETCH_USER_AGENT,
+                },
+                method="GET",
+            )
+            with request.urlopen(req, timeout=_schwab_timeout_seconds()) as response:
+                payload = response.read().decode("utf-8", errors="replace")
+            return json.loads(payload) if payload.strip() else {}
+        except error.HTTPError as exc:
+            try:
+                _schwab_raise_http_error(exc, endpoint=path)
+            except MarketDataError as raised:
+                err = raised
+            else:
+                err = MarketDataError(
+                    f"Schwab API error endpoint={path}: HTTP {getattr(exc, 'code', 'unknown')}",
+                    provider="schwab",
+                    error_type="upstream_api_error",
+                    retryable=False,
+                )
+        except error.URLError as exc:
+            err = MarketDataError(
+                f"Schwab upstream unreachable endpoint={path}: {exc}",
+                provider="schwab",
+                error_type="upstream_unreachable",
+                retryable=True,
+            )
+        except TimeoutError as exc:
+            err = MarketDataError(
+                f"Schwab request timed out endpoint={path}: {exc}",
+                provider="schwab",
+                error_type="upstream_unreachable",
+                retryable=True,
+            )
+        except json.JSONDecodeError as exc:
+            err = MarketDataError(
+                f"Schwab returned invalid JSON for endpoint={path}: {exc}",
+                provider="schwab",
+                error_type="upstream_invalid_response",
+                retryable=True,
+            )
+        except MarketDataError as exc:
+            err = exc
+        except Exception as exc:
+            err = MarketDataError(
+                f"Unexpected Schwab request error endpoint={path}: {exc}",
+                provider="schwab",
+                error_type="upstream_api_error",
+                retryable=False,
+            )
 
-    try:
-        return json.loads(payload) if payload.strip() else {}
-    except Exception as exc:
-        raise MarketDataError(
-            f"Schwab returned invalid JSON for endpoint={path}: {exc}",
-            provider="schwab",
-            error_type="upstream_invalid_response",
-            retryable=True,
-        ) from exc
+        is_last_attempt = attempt >= (max_attempts - 1)
+        if is_last_attempt or not bool(err.retryable):
+            raise err
+
+        sleep_seconds = retry_backoff_seconds * (2**attempt)
+        print(
+            f"Warning: Schwab request failed endpoint={path} "
+            f"(attempt {attempt + 1}/{max_attempts}), retrying: {err}"
+        )
+        if sleep_seconds > 0:
+            time.sleep(sleep_seconds)
+
+    raise RuntimeError(f"Unreachable retry state for Schwab endpoint={path}.")
 
 
 def _schwab_candles_to_ohlc_frame(candles: Any, symbol: str) -> pd.DataFrame:
@@ -1143,8 +1204,18 @@ def fetch_stock_daily_bars(ticker: str, start_date: str) -> pd.DataFrame:
         return fallback
 
     if last_error is not None:
-        raise RuntimeError(f"No daily OHLC data returned from Stooq or Yahoo for {raw_symbol}: {last_error}") from last_error
-    raise RuntimeError(f"No daily OHLC data returned from Stooq or Yahoo for {raw_symbol}.")
+        raise MarketDataError(
+            f"No daily OHLC data returned from Stooq or Yahoo for {raw_symbol}: {last_error}",
+            provider="public",
+            error_type="upstream_unreachable",
+            retryable=True,
+        ) from last_error
+    raise MarketDataError(
+        f"No daily OHLC data returned from Stooq or Yahoo for {raw_symbol}.",
+        provider="public",
+        error_type="symbol_not_found",
+        retryable=False,
+    )
 
 
 def _fetch_yfinance_daily_history(raw_symbol: str, start_date: str) -> pd.Series | None:
@@ -1396,10 +1467,18 @@ def fetch_stock_daily_history(ticker: str, start_date: str) -> pd.Series:
         return fallback
 
     if last_error is not None:
-        raise RuntimeError(
-            f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}: {last_error}"
+        raise MarketDataError(
+            f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}: {last_error}",
+            provider="public",
+            error_type="upstream_unreachable",
+            retryable=True,
         ) from last_error
-    raise RuntimeError(f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}.")
+    raise MarketDataError(
+        f"No daily stock data returned from Stooq or Yahoo for {raw_symbol}.",
+        provider="public",
+        error_type="symbol_not_found",
+        retryable=False,
+    )
 
 
 def _fetch_public_intraday_quote(raw_symbol: str) -> dict[str, Any] | None:

@@ -26,6 +26,74 @@ class _FakeResponse:
         return False
 
 
+def test_schwab_get_json_retries_retryable_errors_then_succeeds(monkeypatch) -> None:
+    attempts = {"count": 0}
+    sleeps: list[float] = []
+
+    def fake_urlopen(req, timeout: int = 12):
+        del req, timeout
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise data_fetch.error.URLError("temporary failure")
+        return _FakeResponse('{"ok": true}')
+
+    monkeypatch.setenv("SCHWAB_FETCH_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("SCHWAB_FETCH_RETRY_BACKOFF_SECONDS", "0.5")
+    monkeypatch.setattr(data_fetch, "_schwab_access_token", lambda: "token")
+    monkeypatch.setattr(data_fetch, "_schwab_base_url", lambda: "https://api.schwabapi.com")
+    monkeypatch.setattr(data_fetch.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(data_fetch.time, "sleep", lambda seconds: sleeps.append(float(seconds)))
+
+    payload = data_fetch._schwab_get_json("/unit-test", {"symbol": "AAPL"})
+
+    assert payload == {"ok": True}
+    assert attempts["count"] == 3
+    assert sleeps == [0.5, 1.0]
+
+
+def test_schwab_get_json_raises_after_exhausting_retries(monkeypatch) -> None:
+    attempts = {"count": 0}
+    sleeps: list[float] = []
+
+    def fake_urlopen(req, timeout: int = 12):
+        del req, timeout
+        attempts["count"] += 1
+        raise data_fetch.error.URLError("down")
+
+    monkeypatch.setenv("SCHWAB_FETCH_MAX_ATTEMPTS", "2")
+    monkeypatch.setenv("SCHWAB_FETCH_RETRY_BACKOFF_SECONDS", "0")
+    monkeypatch.setattr(data_fetch, "_schwab_access_token", lambda: "token")
+    monkeypatch.setattr(data_fetch, "_schwab_base_url", lambda: "https://api.schwabapi.com")
+    monkeypatch.setattr(data_fetch.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(data_fetch.time, "sleep", lambda seconds: sleeps.append(float(seconds)))
+
+    with pytest.raises(data_fetch.MarketDataError, match="Schwab upstream unreachable endpoint=/unit-test"):
+        data_fetch._schwab_get_json("/unit-test", {"symbol": "AAPL"})
+
+    assert attempts["count"] == 2
+    assert sleeps == []
+
+
+def test_market_data_provider_auto_prefers_schwab_when_refresh_creds_present(monkeypatch) -> None:
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "auto")
+    monkeypatch.delenv("SCHWAB_ACCESS_TOKEN", raising=False)
+    monkeypatch.setenv("SCHWAB_REFRESH_TOKEN", "refresh-token")
+    monkeypatch.setenv("SCHWAB_CLIENT_ID", "client-id")
+    monkeypatch.setenv("SCHWAB_CLIENT_SECRET", "client-secret")
+
+    assert data_fetch._market_data_provider() == data_fetch.MARKET_DATA_PROVIDER_SCHWAB
+
+
+def test_market_data_provider_auto_uses_public_when_schwab_creds_missing(monkeypatch) -> None:
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "auto")
+    monkeypatch.delenv("SCHWAB_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("SCHWAB_REFRESH_TOKEN", raising=False)
+    monkeypatch.delenv("SCHWAB_CLIENT_ID", raising=False)
+    monkeypatch.delenv("SCHWAB_CLIENT_SECRET", raising=False)
+
+    assert data_fetch._market_data_provider() == data_fetch.MARKET_DATA_PROVIDER_PUBLIC
+
+
 def test_fetch_fred_series_retries_timeout_then_succeeds(monkeypatch) -> None:
     calls = {"count": 0}
     sleeps: list[float] = []
@@ -151,6 +219,36 @@ def test_fetch_stock_daily_history_falls_back_to_yfinance_when_stooq_fails(monke
     assert series.attrs["source"] == "YFINANCE:AAPL"
 
 
+def test_fetch_stock_daily_history_marks_public_outage_retryable(monkeypatch) -> None:
+    def fake_datareader(symbol: str, source: str, start: str) -> pd.DataFrame:
+        del symbol, source, start
+        raise OSError("StooqDailyReader request returned no data; check URL for invalid inputs: https://stooq.com/q/d/l/")
+
+    monkeypatch.setattr(data_fetch, "DataReader", fake_datareader)
+    monkeypatch.setattr(data_fetch, "_fetch_yfinance_daily_history", lambda raw_symbol, start_date: None)
+
+    with pytest.raises(data_fetch.MarketDataError) as excinfo:
+        data_fetch.fetch_stock_daily_history("QQQ", "2024-01-01")
+
+    exc = excinfo.value
+    assert exc.provider == "public"
+    assert exc.error_type == "upstream_unreachable"
+    assert exc.retryable is True
+
+
+def test_fetch_stock_daily_history_marks_empty_sources_symbol_not_found(monkeypatch) -> None:
+    monkeypatch.setattr(data_fetch, "DataReader", lambda symbol, source, start: pd.DataFrame())
+    monkeypatch.setattr(data_fetch, "_fetch_yfinance_daily_history", lambda raw_symbol, start_date: None)
+
+    with pytest.raises(data_fetch.MarketDataError) as excinfo:
+        data_fetch.fetch_stock_daily_history("ZZZZ", "2024-01-01")
+
+    exc = excinfo.value
+    assert exc.provider == "public"
+    assert exc.error_type == "symbol_not_found"
+    assert exc.retryable is False
+
+
 def test_fetch_stock_intraday_quote_uses_stooq_quote(monkeypatch) -> None:
     def fake_urlopen(url: str, timeout: int = 10) -> _FakeResponse:
         del timeout
@@ -175,6 +273,7 @@ def test_fetch_stock_intraday_quote_uses_stooq_quote(monkeypatch) -> None:
 
 
 def test_fetch_stock_intraday_latest_returns_none_on_bad_payload(monkeypatch) -> None:
+    monkeypatch.setenv("MARKET_DATA_PROVIDER", "public")
     monkeypatch.setattr(data_fetch.request, "urlopen", lambda *args, **kwargs: _FakeResponse(""))
 
     assert data_fetch.fetch_stock_intraday_latest("NVDA") is None

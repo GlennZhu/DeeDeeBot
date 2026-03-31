@@ -61,9 +61,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Preflight Schwab auth
+        if: steps.guard.outputs.run_pipeline == 'true'
+        env:
+          MARKET_DATA_PROVIDER: schwab
+          SCHWAB_REFRESH_TOKEN: ${{ secrets.SCHWAB_REFRESH_TOKEN }}
+          SCHWAB_CLIENT_ID: ${{ secrets.SCHWAB_CLIENT_ID }}
+          SCHWAB_CLIENT_SECRET: ${{ secrets.SCHWAB_CLIENT_SECRET }}
+          SCHWAB_BASE_URL: ${{ secrets.SCHWAB_BASE_URL }}
+          SCHWAB_REQUEST_TIMEOUT_SECONDS: "12"
+        run: python scripts/schwab_auth_preflight.py
+
       - name: Run stock-only pipeline
         if: steps.guard.outputs.run_pipeline == 'true'
         env:
+          MARKET_DATA_PROVIDER: schwab
+          SCHWAB_REFRESH_TOKEN: ${{ secrets.SCHWAB_REFRESH_TOKEN }}
+          SCHWAB_CLIENT_ID: ${{ secrets.SCHWAB_CLIENT_ID }}
+          SCHWAB_CLIENT_SECRET: ${{ secrets.SCHWAB_CLIENT_SECRET }}
+          SCHWAB_BASE_URL: ${{ secrets.SCHWAB_BASE_URL }}
+          SCHWAB_REQUEST_TIMEOUT_SECONDS: "12"
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python -m src.pipeline --stock-only
 

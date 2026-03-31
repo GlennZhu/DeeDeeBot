@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from src import pipeline
 from src.stock_signals import STOCK_TRIGGER_COLUMNS
@@ -71,6 +72,27 @@ def test_compute_watchlist_signals_skips_intraday_quotes_outside_session(monkeyp
     assert row["status"] == "ok"
     assert pd.isna(row["intraday_quote_source"])
     assert "price basis: daily_close" in str(row["status_message"])
+
+
+def test_enforce_error_budget_raises_when_retryable_errors_exceed_threshold() -> None:
+    frame = pd.DataFrame(
+        {
+            "status": ["fetch_error", "compute_error", "ok"],
+            "error_retryable": [True, True, False],
+        }
+    )
+    with pytest.raises(RuntimeError, match="error ratio exceeded threshold"):
+        pipeline._enforce_error_budget(frame, name="watchlist", max_error_ratio=0.5)
+
+
+def test_enforce_error_budget_allows_when_error_ratio_within_threshold() -> None:
+    frame = pd.DataFrame(
+        {
+            "status": ["fetch_error", "ok", "ok"],
+            "error_retryable": [True, False, False],
+        }
+    )
+    pipeline._enforce_error_budget(frame, name="watchlist", max_error_ratio=0.5)
 
 
 def test_detect_new_threshold_events_flags_only_new_trigger() -> None:

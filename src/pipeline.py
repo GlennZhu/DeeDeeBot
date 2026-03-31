@@ -617,12 +617,17 @@ def _enforce_error_budget(frame: pd.DataFrame, *, name: str, max_error_ratio: fl
         return
     threshold = min(1.0, max(0.0, float(max_error_ratio)))
     status_series = frame["status"].fillna("").astype(str)
-    error_count = int(status_series.isin({"fetch_error", "compute_error"}).sum())
+    error_mask = status_series.isin({"fetch_error", "compute_error"})
+    error_count = int(error_mask.sum())
     ratio = float(error_count) / float(len(frame)) if len(frame) else 0.0
     if ratio > threshold:
+        retryable_error_count = 0
+        if "error_retryable" in frame.columns:
+            retryable_series = frame["error_retryable"].map(_coerce_bool_flag)
+            retryable_error_count = int((error_mask & retryable_series).sum())
         raise RuntimeError(
             f"{name} error ratio exceeded threshold: errors={error_count}/{len(frame)} "
-            f"({ratio:.1%}) > allowed {threshold:.1%}"
+            f"({ratio:.1%}) > allowed {threshold:.1%} (retryable_errors={retryable_error_count})"
         )
 
 

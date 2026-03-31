@@ -3,15 +3,17 @@ set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCHWAB_OAUTH_AUTHORIZE_URL="https://api.schwabapi.com/v1/oauth/authorize"
-SCHWAB_OAUTH_TOKEN_URL="https://api.schwabapi.com/v1/oauth/token"
+SCHWAB_OAUTH_AUTHORIZE_URL="${SCHWAB_OAUTH_AUTHORIZE_URL:-https://api.schwabapi.com/v1/oauth/authorize}"
+SCHWAB_OAUTH_TOKEN_URL="${SCHWAB_OAUTH_TOKEN_URL:-https://api.schwabapi.com/v1/oauth/token}"
 ENV_FILE="${REPO_ROOT}/.env.schwab.local"
 
 usage() {
-  cat <<EOF
-Usage: ${SCRIPT_NAME} [--repo owner/repo] [--redirect-uri URI] [--env-file PATH] [--no-open]
+  cat <<EOF_USAGE
+Usage: ${SCRIPT_NAME} [--env-file PATH] [--redirect-uri URI] [--repo owner/repo] [--no-open] [--print-token] [--no-github-secret]
 
-This script auto-loads ${ENV_FILE} when present.
+This script reuses the auth flow from StockOpportunityScanner and rotates SCHWAB_REFRESH_TOKEN.
+By default it updates ${ENV_FILE} and GitHub secret SCHWAB_REFRESH_TOKEN.
+Use --no-github-secret to skip secret update.
 
 Required environment variables:
   SCHWAB_CLIENT_ID
@@ -22,10 +24,11 @@ Optional environment variables:
   GH_REPO             (fallback target repo if --repo is omitted)
 
 Examples:
-  ${SCRIPT_NAME} --repo owner/repo
-  ${SCRIPT_NAME} --env-file .env.schwab.local --repo owner/repo
-  SCHWAB_REDIRECT_URI="https://127.0.0.1" ${SCRIPT_NAME} --repo owner/repo
-EOF
+  ${SCRIPT_NAME}
+  ${SCRIPT_NAME} --env-file .env.schwab.local --redirect-uri https://127.0.0.1
+  ${SCRIPT_NAME} --repo owner/repo --print-token
+  ${SCRIPT_NAME} --no-github-secret
+EOF_USAGE
 }
 
 require_command() {
@@ -46,10 +49,7 @@ require_env() {
 
 load_env_file() {
   local path="$1"
-  if [[ -z "${path}" ]]; then
-    return 0
-  fi
-  if [[ ! -f "${path}" ]]; then
+  if [[ -z "${path}" || ! -f "${path}" ]]; then
     return 0
   fi
 
@@ -60,26 +60,122 @@ load_env_file() {
   printf 'Loaded environment values from %s\n' "${path}"
 }
 
-CLI_TARGET_REPO=""
+resolve_target_repo() {
+  local explicit_repo="$1"
+  if [[ -n "${explicit_repo}" ]]; then
+    printf '%s\n' "${explicit_repo}"
+    return 0
+  fi
+
+  local env_repo="${GH_REPO:-}"
+  if [[ -n "${env_repo}" ]]; then
+    printf '%s\n' "${env_repo}"
+    return 0
+  fi
+
+  local detected_repo=""
+  detected_repo="$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
+  printf '%s\n' "${detected_repo}"
+}
+
+verify_refresh_token_env_var() {
+  local path="$1"
+  local expected_token="$2"
+  python3 - "${path}" "${expected_token}" <<'PY'
+import re
+import shlex
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1]).expanduser()
+expected = sys.argv[2]
+if not env_path.exists():
+    raise SystemExit(f"ERROR: env file does not exist after update: {env_path}")
+
+pattern = re.compile(r"^\s*SCHWAB_REFRESH_TOKEN\s*=\s*(.*)\s*$")
+for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+    match = pattern.match(line)
+    if not match:
+        continue
+    raw_value = match.group(1)
+    try:
+        parsed = shlex.split(f"x={raw_value}", posix=True)[0].split("=", 1)[1]
+    except Exception:
+        parsed = raw_value
+    if parsed != expected:
+        raise SystemExit(
+            "ERROR: SCHWAB_REFRESH_TOKEN was written, but verification failed for "
+            f"{env_path}. Check file contents manually."
+        )
+    print(f"Verified SCHWAB_REFRESH_TOKEN update in {env_path}")
+    raise SystemExit(0)
+
+raise SystemExit(f"ERROR: SCHWAB_REFRESH_TOKEN assignment not found in {env_path}")
+PY
+}
+
+upsert_refresh_token_env_var() {
+  local path="$1"
+  local token="$2"
+  python3 - "${path}" "${token}" <<'PY'
+import re
+import shlex
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1]).expanduser()
+token = sys.argv[2]
+assignment = f"SCHWAB_REFRESH_TOKEN={shlex.quote(token)}\n"
+pattern = re.compile(r"^\s*SCHWAB_REFRESH_TOKEN\s*=")
+
+if env_path.exists():
+    lines = env_path.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+else:
+    lines = []
+
+output = []
+replaced = False
+for line in lines:
+    if not replaced and pattern.match(line):
+        output.append(assignment)
+        replaced = True
+    else:
+        output.append(line)
+
+if not replaced:
+    if output and not output[-1].endswith("\n"):
+        output[-1] += "\n"
+    if output and output[-1].strip():
+        output.append("\n")
+    output.append(assignment)
+
+env_path.parent.mkdir(parents=True, exist_ok=True)
+env_path.write_text("".join(output), encoding="utf-8")
+PY
+}
+
 CLI_REDIRECT_URI=""
+CLI_TARGET_REPO=""
 OPEN_BROWSER=true
+PRINT_TOKEN=false
+UPDATE_GITHUB_SECRET=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo)
-      if [[ -z "${2:-}" ]]; then
-        printf 'ERROR: --repo requires a value.\n' >&2
-        exit 2
-      fi
-      CLI_TARGET_REPO="$2"
-      shift 2
-      ;;
     --redirect-uri)
       if [[ -z "${2:-}" ]]; then
         printf 'ERROR: --redirect-uri requires a value.\n' >&2
         exit 2
       fi
       CLI_REDIRECT_URI="$2"
+      shift 2
+      ;;
+    --repo)
+      if [[ -z "${2:-}" ]]; then
+        printf 'ERROR: --repo requires a value.\n' >&2
+        exit 2
+      fi
+      CLI_TARGET_REPO="$2"
       shift 2
       ;;
     --env-file)
@@ -94,6 +190,14 @@ while [[ $# -gt 0 ]]; do
       OPEN_BROWSER=false
       shift
       ;;
+    --print-token)
+      PRINT_TOKEN=true
+      shift
+      ;;
+    --no-github-secret)
+      UPDATE_GITHUB_SECRET=false
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -106,28 +210,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-load_env_file "${ENV_FILE}"
+if [[ "${ENV_FILE}" != /* ]]; then
+  ENV_FILE="${REPO_ROOT}/${ENV_FILE}"
+fi
+printf 'Using env file: %s\n' "${ENV_FILE}"
 
-TARGET_REPO="${CLI_TARGET_REPO:-${GH_REPO:-}}"
-SCHWAB_REDIRECT_URI="${CLI_REDIRECT_URI:-${SCHWAB_REDIRECT_URI:-https://127.0.0.1}}"
+load_env_file "${ENV_FILE}"
 
 require_command python3
 require_command curl
-require_command gh
 require_env SCHWAB_CLIENT_ID
 require_env SCHWAB_CLIENT_SECRET
 
-if ! gh auth status -h github.com >/dev/null 2>&1; then
-  printf 'ERROR: GitHub CLI is not authenticated. Run: gh auth login\n' >&2
-  exit 1
-fi
+SCHWAB_REDIRECT_URI="${CLI_REDIRECT_URI:-${SCHWAB_REDIRECT_URI:-https://127.0.0.1}}"
+TARGET_REPO=""
 
-if [[ -z "${TARGET_REPO}" ]]; then
-  TARGET_REPO="$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
-fi
-if [[ -z "${TARGET_REPO}" ]]; then
-  printf 'ERROR: unable to determine target repo. Pass --repo owner/repo.\n' >&2
-  exit 1
+if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
+  require_command gh
+  if ! gh auth status -h github.com >/dev/null 2>&1; then
+    printf 'ERROR: GitHub CLI is not authenticated. Run: gh auth login (or use --no-github-secret).\n' >&2
+    exit 1
+  fi
+  TARGET_REPO="$(resolve_target_repo "${CLI_TARGET_REPO}")"
+  if [[ -z "${TARGET_REPO}" ]]; then
+    printf 'ERROR: unable to resolve target GitHub repo. Pass --repo owner/repo or set GH_REPO.\n' >&2
+    exit 1
+  fi
+  printf 'GitHub secret target repo: %s\n' "${TARGET_REPO}"
 fi
 
 AUTH_URL="$(python3 - "${SCHWAB_CLIENT_ID}" "${SCHWAB_REDIRECT_URI}" "${SCHWAB_OAUTH_AUTHORIZE_URL}" <<'PY'
@@ -148,9 +257,7 @@ print(f"{authorize_url}?{query}")
 PY
 )"
 
-printf 'Target repo: %s\n' "${TARGET_REPO}"
 printf 'Open this URL in your browser to authorize:\n%s\n' "${AUTH_URL}"
-
 if [[ "${OPEN_BROWSER}" == "true" ]]; then
   if command -v xdg-open >/dev/null 2>&1; then
     xdg-open "${AUTH_URL}" >/dev/null 2>&1 || true
@@ -233,9 +340,20 @@ if [[ -z "${new_refresh_token}" ]]; then
   exit 1
 fi
 
-printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${TARGET_REPO}"
+upsert_refresh_token_env_var "${ENV_FILE}" "${new_refresh_token}"
+chmod 600 "${ENV_FILE}" 2>/dev/null || true
+printf 'Updated SCHWAB_REFRESH_TOKEN in %s\n' "${ENV_FILE}"
+verify_refresh_token_env_var "${ENV_FILE}" "${new_refresh_token}"
 
-printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s.\n' "${TARGET_REPO}"
+if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
+  printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${TARGET_REPO}"
+  printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s\n' "${TARGET_REPO}"
+fi
+
+if [[ "${PRINT_TOKEN}" == "true" ]]; then
+  printf 'SCHWAB_REFRESH_TOKEN=%s\n' "${new_refresh_token}"
+fi
+
 if [[ -n "${access_expires_in}" ]]; then
   printf 'access_token_expires_in=%ss\n' "${access_expires_in}"
 fi
