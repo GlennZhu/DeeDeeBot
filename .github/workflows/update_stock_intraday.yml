@@ -18,14 +18,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Evaluate Eastern intraday session guard
+      - name: Evaluate Eastern Schwab 24/5 session guard
         id: guard
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           should_run="false"
-          reason="outside_et_intraday_session"
+          reason="outside_et_schwab_24x5_session"
 
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             should_run="true"
@@ -35,14 +35,19 @@ jobs:
             local_hm="$(TZ=America/New_York date +%H:%M)"
             local_hour="$(TZ=America/New_York date +%H)"
             local_minute="$(TZ=America/New_York date +%M)"
-            local_slot_minutes=$((10#$local_hour * 60 + ((10#$local_minute / 15) * 15)))
+            local_minutes=$((10#$local_hour * 60 + 10#$local_minute))
+            rollover_minutes=$((20 * 60))  # 20:00 ET daily rollover
 
-            session_start_minutes=$((4 * 60))   # 04:00 ET pre-market open
-            session_end_minutes=$((20 * 60))    # 20:00 ET after-hours close
-
-            if [[ "$local_dow" -ge 1 && "$local_dow" -le 5 && "$local_slot_minutes" -ge "$session_start_minutes" && "$local_slot_minutes" -le "$session_end_minutes" ]]; then
+            # Schwab 24/5 session: Sun 20:00 ET through Fri 20:00 ET.
+            if [[ "$local_dow" -ge 1 && "$local_dow" -le 4 ]]; then
               should_run="true"
-              reason="weekday_trading_or_extended_hours_slot"
+              reason="mon_thu_24x5_session"
+            elif [[ "$local_dow" -eq 5 && "$local_minutes" -le "$rollover_minutes" ]]; then
+              should_run="true"
+              reason="fri_until_20_00_et"
+            elif [[ "$local_dow" -eq 7 && "$local_minutes" -ge "$rollover_minutes" ]]; then
+              should_run="true"
+              reason="sun_after_20_00_et"
             fi
           fi
 

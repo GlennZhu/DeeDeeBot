@@ -28,7 +28,7 @@ Dashboard and pipeline that track:
 - `data/derived/stock_signals_latest.csv`: latest stock signal states (includes intraday quote freshness fields)
 - `data/derived/signal_events_7d.csv`: rolling 7-day signal event history (`triggered` and `cleared`)
 - `.github/workflows/update_data.yml`: weekday scheduled refresh (Eastern time guard)
-- `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Eastern extended-hours guard)
+- `.github/workflows/update_stock_intraday.yml`: stock-only 15-minute intraday refresh (Eastern Schwab 24/5 guard)
 
 ## Stock Watchlist Metrics
 
@@ -224,7 +224,7 @@ Notifications:
 - Set `DISCORD_WEBHOOK_URL` as a GitHub repository secret to receive enriched Discord notifications after each refresh run.
 - Optionally set `FRED_API_KEY` as a GitHub repository secret to use official FRED API responses instead of keyless graph CSV.
 
-Workflow `update_stock_intraday.yml` is triggered every 15 minutes in UTC, then a runtime Eastern-time guard allows execution only on weekdays during the intraday session window (**4:00 AM ET through 8:00 PM ET**, inclusive end-of-session slot). It runs a Schwab auth preflight and then executes `python -m src.pipeline --stock-only` with `MARKET_DATA_PROVIDER=schwab` to keep watchlist alerts fresh intraday.
+Workflow `update_stock_intraday.yml` is triggered every 15 minutes in UTC, then a runtime Eastern-time guard allows execution only during Schwab's 24/5 session window (**Sunday 8:00 PM ET through Friday 8:00 PM ET**). It runs a Schwab auth preflight and then executes `python -m src.pipeline --stock-only` with `MARKET_DATA_PROVIDER=schwab` to keep watchlist alerts fresh across day, extended, and overnight sessions.
 
 Required repository secrets for Schwab stock workflow:
 

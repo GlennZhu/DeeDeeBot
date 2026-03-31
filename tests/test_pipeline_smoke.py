@@ -23,17 +23,32 @@ def _stock_row(ticker: str, **triggers: bool) -> dict[str, object]:
     return row
 
 
-def test_is_trading_or_extended_hours_et_includes_end_of_extended_window() -> None:
-    # 2026-02-11T01:00:00Z == 2026-02-10 20:00:00 ET (end of after-hours session)
-    assert pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 11, 1, 0, tzinfo=timezone.utc))
+def test_is_trading_or_extended_hours_et_excludes_sunday_before_open() -> None:
+    # 2026-02-16T00:59:00Z == 2026-02-15 19:59:00 ET
+    assert not pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 16, 0, 59, tzinfo=timezone.utc))
 
 
-def test_is_trading_or_extended_hours_et_excludes_after_extended_close() -> None:
-    # 2026-02-11T01:01:00Z == 2026-02-10 20:01:00 ET
-    assert not pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 11, 1, 1, tzinfo=timezone.utc))
+def test_is_trading_or_extended_hours_et_includes_sunday_open() -> None:
+    # 2026-02-16T01:00:00Z == 2026-02-15 20:00:00 ET (start of 24/5 session)
+    assert pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 16, 1, 0, tzinfo=timezone.utc))
 
 
-def test_is_trading_or_extended_hours_et_excludes_weekend() -> None:
+def test_is_trading_or_extended_hours_et_includes_weekday_overnight() -> None:
+    # 2026-02-18T01:01:00Z == 2026-02-17 20:01:00 ET
+    assert pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 18, 1, 1, tzinfo=timezone.utc))
+
+
+def test_is_trading_or_extended_hours_et_includes_friday_rollover() -> None:
+    # 2026-02-21T01:00:00Z == 2026-02-20 20:00:00 ET (end of 24/5 session)
+    assert pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 21, 1, 0, tzinfo=timezone.utc))
+
+
+def test_is_trading_or_extended_hours_et_excludes_after_friday_rollover() -> None:
+    # 2026-02-21T01:01:00Z == 2026-02-20 20:01:00 ET
+    assert not pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 21, 1, 1, tzinfo=timezone.utc))
+
+
+def test_is_trading_or_extended_hours_et_excludes_saturday() -> None:
     assert not pipeline._is_trading_or_extended_hours_et(datetime(2026, 2, 14, 15, 0, tzinfo=timezone.utc))
 
 

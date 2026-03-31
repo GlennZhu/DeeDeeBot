@@ -161,8 +161,7 @@ STOCK_BOOL_COLUMNS = [
     *STOCK_TRIGGER_COLUMNS,
 ]
 EASTERN_TZ = ZoneInfo("America/New_York")
-INTRADAY_SESSION_START_MINUTES_ET = 4 * 60
-INTRADAY_SESSION_END_MINUTES_ET = 20 * 60
+INTRADAY_24X5_ROLLOVER_MINUTES_ET = 20 * 60
 
 
 def _default_start_date(lookback_years: int) -> str:
@@ -239,11 +238,16 @@ def _is_trading_or_extended_hours_et(now_utc: datetime | None = None) -> bool:
         ts_utc = ts_utc.astimezone(timezone.utc)
 
     ts_et = ts_utc.astimezone(EASTERN_TZ)
-    if ts_et.isoweekday() > 5:
-        return False
-
+    weekday = ts_et.isoweekday()
     total_minutes = ts_et.hour * 60 + ts_et.minute
-    return INTRADAY_SESSION_START_MINUTES_ET <= total_minutes <= INTRADAY_SESSION_END_MINUTES_ET
+    # Schwab 24/5 window is Sunday 20:00 ET through Friday 20:00 ET.
+    if weekday in {1, 2, 3, 4}:
+        return True
+    if weekday == 5:
+        return total_minutes <= INTRADAY_24X5_ROLLOVER_MINUTES_ET
+    if weekday == 7:
+        return total_minutes >= INTRADAY_24X5_ROLLOVER_MINUTES_ET
+    return False
 
 
 def _event_cell_value(raw_value: Any) -> Any:
@@ -747,7 +751,7 @@ def _compute_watchlist_signals(
             batched_intraday_quotes = {}
     else:
         print(
-            "Info: outside ET trading/extended-hours window (04:00-20:00); "
+            "Info: outside ET Schwab 24/5 session window (Sun 20:00 ET through Fri 20:00 ET); "
             "skipping intraday quote fetch and using daily-close signal basis."
         )
 
