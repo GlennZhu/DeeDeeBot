@@ -1,6 +1,6 @@
 metric_key,metric_name,as_of_date,value,signal_state,threshold_rule,message,source,stale_days,last_updated_utc
-m2,M2 Money Supply,2026-02-28,22667.3,long_environment,(current - m2_12m_ago) / m2_12m_ago > 0,M2 YoY is 4.88% (> 0): long environment.,FRED:M2SL,38,2026-04-07T21:11:24Z
-hiring_rate,Hiring Rate,2026-02-28,3.1,recession_alert,current <= 3.4,Hiring rate is at or below 3.4: recession alert and defensive posture.,FRED:JTSHIR,38,2026-04-07T21:11:24Z
-ten_year_yield,10Y Treasury Yield,2026-04-06,4.34,normal,>=5.0 extreme; >=4.4 pressure; <4.4 normal,10Y yield < 4.4: normal zone.,FRED:DGS10,1,2026-04-07T21:11:24Z
-buffett_ratio,Buffett Indicator,2025-10-31,2.325920729606501,overheat_peak_risk,ratio >= 2.0,Buffett ratio >= 2.0: market overheat / long-term topping risk.,FRED:NCBCEL/FRED:GDP,158,2026-04-07T21:11:24Z
-unemployment_rate,Unemployment Rate,2026-03-31,4.3,stable,MoM >=0.2 weak; >=0.1 watch; <0.1 stable,Unemployment MoM change is -0.10: stable.,FRED:UNRATE,7,2026-04-07T21:11:24Z
+m2,M2 Money Supply,2026-02-28,22667.3,long_environment,(current - m2_12m_ago) / m2_12m_ago > 0,M2 YoY is 4.88% (> 0): long environment.,FRED:M2SL,39,2026-04-08T21:11:17Z
+hiring_rate,Hiring Rate,2026-02-28,3.1,recession_alert,current <= 3.4,Hiring rate is at or below 3.4: recession alert and defensive posture.,FRED:JTSHIR,39,2026-04-08T21:11:17Z
+ten_year_yield,10Y Treasury Yield,2026-04-07,4.33,normal,>=5.0 extreme; >=4.4 pressure; <4.4 normal,10Y yield < 4.4: normal zone.,FRED:DGS10,1,2026-04-08T21:11:17Z
+buffett_ratio,Buffett Indicator,2025-10-31,2.325920729606501,overheat_peak_risk,ratio >= 2.0,Buffett ratio >= 2.0: market overheat / long-term topping risk.,FRED:NCBCEL/FRED:GDP,159,2026-04-08T21:11:17Z
+unemployment_rate,Unemployment Rate,2026-03-31,4.3,stable,MoM >=0.2 weak; >=0.1 watch; <0.1 stable,Unemployment MoM change is -0.10: stable.,FRED:UNRATE,8,2026-04-08T21:11:17Z
