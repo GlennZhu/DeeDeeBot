@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-04-01T08:51:10Z,2026-04-01 04:51:10 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-31,,88.58,,ok,RS_TREND_DOWN
 2026-04-01T09:55:23Z,2026-04-01 05:55:23 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-03-31,,87.53,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-01T11:35:56Z,2026-04-01 07:35:56 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-31,,177.2,,ok,
 2026-04-01T11:35:56Z,2026-04-01 07:35:56 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-31,,177.2,,ok,
@@ -7,13 +6,13 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-01T11:35:56Z,2026-04-01 07:35:56 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-31,,583.33,,ok,
 2026-04-01T12:39:35Z,2026-04-01 08:39:35 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-03-31,,582.23,,ok,
 2026-04-01T12:39:35Z,2026-04-01 08:39:35 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-03-31,,582.23,,ok,
-2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.025,,ok,
-2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,362.94,,ok,RS_TREND_DOWN
-2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.025,,ok,
+2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,370.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,583.06,,ok,
 2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,93.84,,ok,RS_TREND_DOWN
 2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,583.06,,ok,
-2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,583.06,,ok,
-2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,370.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,362.94,,ok,RS_TREND_DOWN
+2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.025,,ok,
+2026-04-01T14:13:58Z,2026-04-01 10:13:58 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.025,,ok,
 2026-04-01T15:40:53Z,2026-04-01 11:40:53 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.71,,ok,
 2026-04-01T15:40:53Z,2026-04-01 11:40:53 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.71,,ok,
 2026-04-01T18:35:19Z,2026-04-01 14:35:19 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,174.9203,,ok,
@@ -21,19 +20,19 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-01T18:35:19Z,2026-04-01 14:35:19 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,174.9203,,ok,
 2026-04-01T18:35:19Z,2026-04-01 14:35:19 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,582.59,,ok,
 2026-04-01T18:35:19Z,2026-04-01 14:35:19 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,85.32,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-04-01T19:42:05Z,2026-04-01 15:42:05 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,585.18,,ok,
+2026-04-01T19:42:05Z,2026-04-01 15:42:05 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.1401,,ok,
 2026-04-01T19:42:05Z,2026-04-01 15:42:05 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,585.18,,ok,
 2026-04-01T19:42:05Z,2026-04-01 15:42:05 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.1401,,ok,
-2026-04-01T19:42:05Z,2026-04-01 15:42:05 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.1401,,ok,
-2026-04-01T19:42:05Z,2026-04-01 15:42:05 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,585.18,,ok,
 2026-04-01T20:24:02Z,2026-04-01 16:24:02 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,175.7587,,ok,
 2026-04-01T20:24:02Z,2026-04-01 16:24:02 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,175.7587,,ok,
 2026-04-01T22:23:23Z,2026-04-01 18:23:23 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.39,,ok,
 2026-04-01T22:23:23Z,2026-04-01 18:23:23 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.39,,ok,
 2026-04-01T23:48:40Z,2026-04-01 19:48:40 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,88.4,,ok,RS_TREND_DOWN
+2026-04-02T05:26:10Z,2026-04-02 01:26:10 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.0799,,ok,
+2026-04-02T05:26:10Z,2026-04-02 01:26:10 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,369.95,,ok,RS_TREND_DOWN
 2026-04-02T05:26:10Z,2026-04-02 01:26:10 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,88.34,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-02T05:26:10Z,2026-04-02 01:26:10 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,176.0799,,ok,
-2026-04-02T05:26:10Z,2026-04-02 01:26:10 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,369.95,,ok,RS_TREND_DOWN
-2026-04-02T05:26:10Z,2026-04-02 01:26:10 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,176.0799,,ok,
 2026-04-02T08:42:50Z,2026-04-02 04:42:50 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,353.5,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-02T08:42:50Z,2026-04-02 04:42:50 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-01,,576.32,,ok,
 2026-04-02T08:42:50Z,2026-04-02 04:42:50 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-01,,576.32,,ok,
@@ -42,11 +41,11 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-02T12:05:49Z,2026-04-02 08:05:49 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-01,,364.3599,,ok,RS_TREND_DOWN
 2026-04-02T13:53:52Z,2026-04-02 09:53:52 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-02,,353.34,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-02T13:53:52Z,2026-04-02 09:53:52 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-02,,92.56,,ok,RS_TREND_DOWN
-2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-02,,584.3528,,ok,
-2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-02,,365.195,,ok,RS_TREND_DOWN
+2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,584.3528,,ok,
 2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-02,,176.3799,,ok,
 2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,176.3799,,ok,
-2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,584.3528,,ok,
+2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-02,,365.195,,ok,RS_TREND_DOWN
+2026-04-02T14:45:15Z,2026-04-02 10:45:15 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-02,,584.3528,,ok,
 2026-04-02T16:35:04Z,2026-04-02 12:35:04 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-02,,361.67,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-02T16:35:04Z,2026-04-02 12:35:04 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-02,,582.675,,ok,
 2026-04-02T16:35:04Z,2026-04-02 12:35:04 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,582.675,,ok,
@@ -55,8 +54,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-02T17:29:21Z,2026-04-02 13:29:21 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,583.55,,ok,
 2026-04-02T18:07:48Z,2026-04-02 14:07:48 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,582.5986,,ok,
 2026-04-02T18:07:48Z,2026-04-02 14:07:48 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-02,,582.5986,,ok,
-2026-04-02T19:12:58Z,2026-04-02 15:12:58 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,583.709,,ok,
 2026-04-02T19:12:58Z,2026-04-02 15:12:58 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-02,,583.709,,ok,
+2026-04-02T19:12:58Z,2026-04-02 15:12:58 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-02,,583.709,,ok,
 2026-04-03T21:02:25Z,2026-04-03 17:02:25 EDT,macro,cleared,unemployment_rate,Unemployment Rate,,unemployment_mom_gte_0_1,Unemployment MoM >= 0.1,2026-03-31,4.3,,watch -> stable,,
 2026-04-06T13:43:47Z,2026-04-06 09:43:47 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-06,,370.72,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-06T21:26:40Z,2026-04-06 17:26:40 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-06,,324.37,,ok,
@@ -65,17 +64,17 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-07T06:49:21Z,2026-04-07 02:49:21 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-06,,322.0558,,insufficient_data,
 2026-04-07T06:49:21Z,2026-04-07 02:49:21 EDT,stock,cleared,AVGO,AVGO,QQQ,weekly_macd_bearish_divergence,Risk: Bearish Weekly MACD divergence (confirmed),2026-04-06,,322.0558,,insufficient_data,
 2026-04-07T06:49:21Z,2026-04-07 02:49:21 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-04-06,,322.0558,,insufficient_data,
+2026-04-07T08:02:41Z,2026-04-07 04:02:41 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-06,,323.22,,ok,
+2026-04-07T08:02:41Z,2026-04-07 04:02:41 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-06,,323.22,,ok,
 2026-04-07T08:02:41Z,2026-04-07 04:02:41 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-04-06,,323.22,,ok,
 2026-04-07T08:02:41Z,2026-04-07 04:02:41 EDT,stock,triggered,AVGO,AVGO,QQQ,weekly_macd_bearish_divergence,Risk: Bearish Weekly MACD divergence (confirmed),2026-04-06,,323.22,,ok,
-2026-04-07T08:02:41Z,2026-04-07 04:02:41 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-06,,323.22,,ok,
-2026-04-07T08:02:41Z,2026-04-07 04:02:41 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-06,,323.22,,ok,
 2026-04-07T09:18:27Z,2026-04-07 05:18:27 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-06,,325.64,,ok,
 2026-04-07T11:34:41Z,2026-04-07 07:34:41 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-06,,324.36,,ok,
 2026-04-07T11:34:41Z,2026-04-07 07:34:41 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-06,,175.55,,ok,
 2026-04-07T11:34:41Z,2026-04-07 07:34:41 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-06,,175.55,,ok,
+2026-04-07T14:10:56Z,2026-04-07 10:10:56 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,324.95,,ok,
 2026-04-07T14:10:56Z,2026-04-07 10:10:56 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-07,,580.64,,ok,
 2026-04-07T14:10:56Z,2026-04-07 10:10:56 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,580.64,,ok,
-2026-04-07T14:10:56Z,2026-04-07 10:10:56 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,324.95,,ok,
 2026-04-07T16:37:44Z,2026-04-07 12:37:44 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-07,,584.5682,,ok,
 2026-04-07T16:37:44Z,2026-04-07 12:37:44 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,584.5682,,ok,
 2026-04-07T17:37:24Z,2026-04-07 13:37:24 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,331.95,,ok,
@@ -83,12 +82,12 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-07T20:08:34Z,2026-04-07 16:08:34 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,334.085,,ok,
 2026-04-07T20:08:34Z,2026-04-07 16:08:34 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,178.13,,ok,
 2026-04-07T20:08:34Z,2026-04-07 16:08:34 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-07,,178.13,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,312.7494,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,40.76,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-07,,401.5,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,183.2601,,ok,
 2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,183.2601,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,183.2601,,ok,
 2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,605.1384,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,40.76,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,312.7494,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-07,,401.5,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
 2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,605.1384,,ok,
 2026-04-08T08:18:27Z,2026-04-08 04:18:27 EDT,stock,cleared,MU,MU,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,410.42,,ok,
 2026-04-08T08:18:27Z,2026-04-08 04:18:27 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-07,,410.42,,ok,KEEPING_PACE_OR_LEADING
