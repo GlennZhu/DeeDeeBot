@@ -5,6 +5,7 @@ SCRIPT_NAME="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCHWAB_OAUTH_AUTHORIZE_URL="${SCHWAB_OAUTH_AUTHORIZE_URL:-https://api.schwabapi.com/v1/oauth/authorize}"
 SCHWAB_OAUTH_TOKEN_URL="${SCHWAB_OAUTH_TOKEN_URL:-https://api.schwabapi.com/v1/oauth/token}"
+SCHWAB_ROTATION_TIMESTAMP_VAR="${SCHWAB_ROTATION_TIMESTAMP_VAR:-SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC}"
 ENV_FILE="${REPO_ROOT}/.env.schwab.local"
 
 usage() {
@@ -12,7 +13,8 @@ usage() {
 Usage: ${SCRIPT_NAME} [--env-file PATH] [--redirect-uri URI] [--repo owner/repo] [--no-open] [--print-token] [--no-github-secret]
 
 This script reuses the auth flow from StockOpportunityScanner and rotates SCHWAB_REFRESH_TOKEN.
-By default it updates ${ENV_FILE} and GitHub secret SCHWAB_REFRESH_TOKEN.
+By default it updates ${ENV_FILE}, GitHub secret SCHWAB_REFRESH_TOKEN, and
+GitHub variable ${SCHWAB_ROTATION_TIMESTAMP_VAR} (UTC timestamp of last successful rotation).
 Use --no-github-secret to skip secret update.
 
 Required environment variables:
@@ -22,6 +24,7 @@ Required environment variables:
 Optional environment variables:
   SCHWAB_REDIRECT_URI (default: https://127.0.0.1)
   GH_REPO             (fallback target repo if --repo is omitted)
+  SCHWAB_ROTATION_TIMESTAMP_VAR (default: SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC)
 
 Examples:
   ${SCRIPT_NAME}
@@ -348,6 +351,13 @@ verify_refresh_token_env_var "${ENV_FILE}" "${new_refresh_token}"
 if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
   printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${TARGET_REPO}"
   printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s\n' "${TARGET_REPO}"
+
+  rotation_timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  if gh variable set "${SCHWAB_ROTATION_TIMESTAMP_VAR}" --repo "${TARGET_REPO}" --body "${rotation_timestamp_utc}" >/dev/null; then
+    printf 'Updated GitHub variable %s for %s (%s)\n' "${SCHWAB_ROTATION_TIMESTAMP_VAR}" "${TARGET_REPO}" "${rotation_timestamp_utc}"
+  else
+    printf 'Warning: unable to update GitHub variable %s for %s.\n' "${SCHWAB_ROTATION_TIMESTAMP_VAR}" "${TARGET_REPO}" >&2
+  fi
 fi
 
 if [[ "${PRINT_TOKEN}" == "true" ]]; then

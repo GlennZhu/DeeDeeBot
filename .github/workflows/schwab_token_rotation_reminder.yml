@@ -1,0 +1,230 @@
+name: Schwab Token Rotation Reminder
+
+on:
+  schedule:
+    - cron: "15 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  remind-schwab-token-rotation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate rotation age
+        id: evaluate
+        env:
+          ROTATED_AT_UTC: ${{ vars.SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC }}
+          REMIND_AFTER_DAYS: ${{ vars.SCHWAB_REFRESH_TOKEN_REMIND_AFTER_DAYS }}
+          EXPIRE_AFTER_DAYS: ${{ vars.SCHWAB_REFRESH_TOKEN_EXPIRE_DAYS }}
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import datetime as dt
+          import os
+
+          output_path = os.environ["GITHUB_OUTPUT"]
+          now = dt.datetime.now(dt.timezone.utc)
+
+          def _write_output(name: str, value: str) -> None:
+              with open(output_path, "a", encoding="utf-8") as fh:
+                  fh.write(f"{name}={value}\n")
+
+          def _parse_days(name: str, default: float) -> float:
+              raw = str(os.getenv(name, "")).strip()
+              if not raw:
+                  return default
+              try:
+                  parsed = float(raw)
+              except ValueError:
+                  return default
+              return max(0.1, parsed)
+
+          remind_after_days = _parse_days("REMIND_AFTER_DAYS", 6.0)
+          expire_after_days = _parse_days("EXPIRE_AFTER_DAYS", 7.0)
+          if remind_after_days > expire_after_days:
+              remind_after_days = expire_after_days
+
+          rotated_raw = str(os.getenv("ROTATED_AT_UTC", "")).strip()
+
+          should_notify = False
+          severity = "info"
+          reason = "healthy"
+          age_days_text = "unknown"
+          days_remaining_text = "unknown"
+          rotated_at_utc_text = "missing"
+          expected_expiry_utc_text = "unknown"
+
+          if not rotated_raw:
+              should_notify = True
+              severity = "warning"
+              reason = "missing_rotation_timestamp"
+          else:
+              candidate = rotated_raw
+              if candidate.endswith("Z"):
+                  candidate = candidate[:-1] + "+00:00"
+              try:
+                  rotated_at = dt.datetime.fromisoformat(candidate)
+                  if rotated_at.tzinfo is None:
+                      rotated_at = rotated_at.replace(tzinfo=dt.timezone.utc)
+                  else:
+                      rotated_at = rotated_at.astimezone(dt.timezone.utc)
+
+                  age_days = (now - rotated_at).total_seconds() / 86400.0
+                  expected_expiry = rotated_at + dt.timedelta(days=expire_after_days)
+                  days_remaining = (expected_expiry - now).total_seconds() / 86400.0
+
+                  age_days_text = f"{age_days:.2f}"
+                  days_remaining_text = f"{days_remaining:.2f}"
+                  rotated_at_utc_text = rotated_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+                  expected_expiry_utc_text = expected_expiry.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+                  if age_days < 0:
+                      should_notify = True
+                      severity = "warning"
+                      reason = "rotation_timestamp_in_future"
+                  elif age_days >= expire_after_days:
+                      should_notify = True
+                      severity = "critical"
+                      reason = "token_likely_expired"
+                  elif age_days >= remind_after_days:
+                      should_notify = True
+                      severity = "warning"
+                      reason = "token_expiring_soon"
+              except Exception:
+                  should_notify = True
+                  severity = "warning"
+                  reason = "invalid_rotation_timestamp"
+
+          _write_output("should_notify", "true" if should_notify else "false")
+          _write_output("severity", severity)
+          _write_output("reason", reason)
+          _write_output("age_days", age_days_text)
+          _write_output("days_remaining", days_remaining_text)
+          _write_output("rotated_at_utc", rotated_at_utc_text)
+          _write_output("expected_expiry_utc", expected_expiry_utc_text)
+          _write_output("now_utc", now.strftime("%Y-%m-%dT%H:%M:%SZ"))
+          _write_output("remind_after_days", f"{remind_after_days:.2f}")
+          _write_output("expire_after_days", f"{expire_after_days:.2f}")
+          PY
+
+      - name: Log reminder state
+        env:
+          SHOULD_NOTIFY: ${{ steps.evaluate.outputs.should_notify }}
+          SEVERITY: ${{ steps.evaluate.outputs.severity }}
+          REASON: ${{ steps.evaluate.outputs.reason }}
+          AGE_DAYS: ${{ steps.evaluate.outputs.age_days }}
+          DAYS_REMAINING: ${{ steps.evaluate.outputs.days_remaining }}
+          ROTATED_AT_UTC: ${{ steps.evaluate.outputs.rotated_at_utc }}
+          EXPECTED_EXPIRY_UTC: ${{ steps.evaluate.outputs.expected_expiry_utc }}
+          NOW_UTC: ${{ steps.evaluate.outputs.now_utc }}
+        run: |
+          echo "should_notify=${SHOULD_NOTIFY}"
+          echo "severity=${SEVERITY}"
+          echo "reason=${REASON}"
+          echo "age_days=${AGE_DAYS}"
+          echo "days_remaining=${DAYS_REMAINING}"
+          echo "rotated_at_utc=${ROTATED_AT_UTC}"
+          echo "expected_expiry_utc=${EXPECTED_EXPIRY_UTC}"
+          echo "now_utc=${NOW_UTC}"
+
+      - name: Notify Discord reminder
+        if: steps.evaluate.outputs.should_notify == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SEVERITY: ${{ steps.evaluate.outputs.severity }}
+          REASON: ${{ steps.evaluate.outputs.reason }}
+          AGE_DAYS: ${{ steps.evaluate.outputs.age_days }}
+          DAYS_REMAINING: ${{ steps.evaluate.outputs.days_remaining }}
+          ROTATED_AT_UTC: ${{ steps.evaluate.outputs.rotated_at_utc }}
+          EXPECTED_EXPIRY_UTC: ${{ steps.evaluate.outputs.expected_expiry_utc }}
+          NOW_UTC: ${{ steps.evaluate.outputs.now_utc }}
+          REMIND_AFTER_DAYS: ${{ steps.evaluate.outputs.remind_after_days }}
+          EXPIRE_AFTER_DAYS: ${{ steps.evaluate.outputs.expire_after_days }}
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [[ -z "$DISCORD_WEBHOOK_URL" ]]; then
+            echo "Warning: DISCORD_WEBHOOK_URL is not set; skipping reminder notification."
+            exit 0
+          fi
+
+          payload="$(python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+
+          severity = os.getenv("SEVERITY", "warning").strip().lower()
+          reason = os.getenv("REASON", "token_expiring_soon").strip()
+          age_days = os.getenv("AGE_DAYS", "unknown").strip()
+          days_remaining = os.getenv("DAYS_REMAINING", "unknown").strip()
+          rotated_at_utc = os.getenv("ROTATED_AT_UTC", "missing").strip()
+          expected_expiry_utc = os.getenv("EXPECTED_EXPIRY_UTC", "unknown").strip()
+          now_utc = os.getenv("NOW_UTC", "").strip()
+          remind_after_days = os.getenv("REMIND_AFTER_DAYS", "6.00").strip()
+          expire_after_days = os.getenv("EXPIRE_AFTER_DAYS", "7.00").strip()
+          repository = os.getenv("REPOSITORY", "unknown").strip()
+          ref_name = os.getenv("REF_NAME", "unknown").strip()
+          workflow_name = os.getenv("WORKFLOW_NAME", "unknown").strip()
+          run_number = os.getenv("RUN_NUMBER", "unknown").strip()
+          run_attempt = os.getenv("RUN_ATTEMPT", "1").strip()
+          run_url = os.getenv("RUN_URL", "").strip()
+
+          if severity == "critical":
+              emoji = "❌"
+              title = "Schwab Refresh Token Likely Expired"
+              description = "Rotate your Schwab refresh token now to avoid auth failures in stock jobs."
+              color = 15548997
+          else:
+              emoji = "⚠️"
+              title = "Schwab Refresh Token Rotation Reminder"
+              description = "Rotate your Schwab refresh token soon to avoid auth failures."
+              color = 15105570
+
+          payload = {
+              "content": f"{emoji} **{workflow_name}**: `{reason}`",
+              "embeds": [
+                  {
+                      "title": f"{emoji} {title}",
+                      "url": run_url,
+                      "color": color,
+                      "description": (
+                          f"{description}\n\n"
+                          "Run `./scripts/rotate_schwab_token.sh` locally to rotate, "
+                          "then the script will update GitHub secret and rotation timestamp variable."
+                      ),
+                      "fields": [
+                          {"name": "Repository", "value": repository, "inline": True},
+                          {"name": "Branch", "value": ref_name, "inline": True},
+                          {"name": "Reason", "value": reason, "inline": True},
+                          {"name": "Token Age (days)", "value": age_days, "inline": True},
+                          {"name": "Days Remaining", "value": days_remaining, "inline": True},
+                          {"name": "Rotated At (UTC)", "value": rotated_at_utc, "inline": False},
+                          {"name": "Expected Expiry (UTC)", "value": expected_expiry_utc, "inline": False},
+                          {"name": "Reminder Threshold (days)", "value": remind_after_days, "inline": True},
+                          {"name": "Expiry Window (days)", "value": expire_after_days, "inline": True},
+                          {"name": "Run", "value": f"#{run_number} (attempt {run_attempt})", "inline": True},
+                      ],
+                      "timestamp": now_utc or None,
+                  }
+              ],
+          }
+
+          print(json.dumps(payload, separators=(",", ":")))
+          PY
+          )"
+
+          curl -sS -X POST -H 'Content-type: application/json' --data "$payload" "$DISCORD_WEBHOOK_URL" \
+            || echo "Warning: Discord reminder notification request failed."
+
+      - name: Reminder not needed
+        if: steps.evaluate.outputs.should_notify != 'true'
+        run: |
+          echo "Schwab token age is below reminder threshold; no notification sent."

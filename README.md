@@ -159,7 +159,7 @@ Use the semi-automated helper to rotate `SCHWAB_REFRESH_TOKEN` (expected cadence
 ./scripts/rotate_schwab_token.sh
 ```
 
-By default, the script updates both your local env file token and GitHub secret `SCHWAB_REFRESH_TOKEN`.
+By default, the script updates your local env file token, GitHub secret `SCHWAB_REFRESH_TOKEN`, and repository variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC`.
 
 The script auto-loads `.env.schwab.local` (ignored by git because `.env.*` is in `.gitignore`).
 Create that file locally:
@@ -188,6 +188,7 @@ The helper will:
 - Exchange code for tokens and validate `refresh_token` exists
 - Update `SCHWAB_REFRESH_TOKEN` in the selected env file
 - Update repository secret `SCHWAB_REFRESH_TOKEN` using `gh secret set` (auto-detected repo, or `--repo`/`GH_REPO`)
+- Update repository variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` (used by token-expiry reminder workflow)
 
 One-time prerequisites:
 
@@ -195,6 +196,18 @@ One-time prerequisites:
 - Authenticate once with secret-management permissions: `gh auth login`
 
 If token auth is broken, stock refresh workflows fail with provider-auth errors; rotate Schwab credentials and rerun.
+
+### Automated Schwab Rotation Reminder
+
+Workflow `.github/workflows/schwab_token_rotation_reminder.yml` runs daily and posts a Discord warning when your last recorded Schwab rotation age approaches expiry.
+
+It reads these repository variables:
+
+- `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` (auto-managed by `./scripts/rotate_schwab_token.sh`)
+- `SCHWAB_REFRESH_TOKEN_REMIND_AFTER_DAYS` (optional; default `6`)
+- `SCHWAB_REFRESH_TOKEN_EXPIRE_DAYS` (optional; default `7`)
+
+If you already had a token set before this automation, run one rotation once (recommended) so the timestamp variable is created.
 
 ## Run Dashboard
 
@@ -225,6 +238,8 @@ Notifications:
 - Optionally set `FRED_API_KEY` as a GitHub repository secret to use official FRED API responses instead of keyless graph CSV.
 
 Workflow `update_stock_intraday.yml` is triggered every 15 minutes in UTC, then a runtime Eastern-time guard allows execution only during Schwab's 24/5 session window (**Sunday 8:00 PM ET through Friday 8:00 PM ET**). It runs a Schwab auth preflight and then executes `python -m src.pipeline --stock-only` with `MARKET_DATA_PROVIDER=schwab` to keep watchlist alerts fresh across day, extended, and overnight sessions.
+
+Workflow `schwab_token_rotation_reminder.yml` runs daily and sends a Discord reminder when the recorded Schwab token rotation age is close to, or beyond, the configured expiry window.
 
 Required repository secrets for Schwab stock workflow:
 
