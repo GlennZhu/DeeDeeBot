@@ -112,6 +112,17 @@ def _http_status_error_message(exc: error.HTTPError) -> str:
     return body or str(getattr(exc, "reason", "")).strip() or "unknown_error"
 
 
+def _auth_failure_action(message: str) -> str:
+    normalized = str(message).strip().lower()
+    if not normalized:
+        return ""
+    if "refresh_token_authentication_error" in normalized or "unsupported_token_type" in normalized:
+        return "rotate_schwab_refresh_token"
+    if "invalid_client" in normalized or "unauthorized_client" in normalized:
+        return "check_schwab_client_credentials"
+    return ""
+
+
 def main() -> int:
     missing = _missing_required_env()
     if missing:
@@ -156,12 +167,14 @@ def main() -> int:
         except error.HTTPError as exc:
             status = int(getattr(exc, "code", 0) or 0)
             message = _http_status_error_message(exc)
+            action = _auth_failure_action(message)
             retryable_http = status in {408, 429, 500, 502, 503, 504}
             is_last_attempt = attempt >= (attempts - 1)
             if is_last_attempt or not retryable_http:
+                action_field = f" action={action}" if action else ""
                 print(
                     "schwab_auth_preflight_failed "
-                    f"http_status={status} message={message}",
+                    f"http_status={status}{action_field} message={message}",
                     file=sys.stderr,
                 )
                 return 1

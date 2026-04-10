@@ -122,6 +122,21 @@ def _extract_api_error_summary(raw_text: str) -> str:
     return clean
 
 
+def _schwab_auth_action(raw_text: str) -> str:
+    summary = _extract_api_error_summary(raw_text)
+    normalized = summary.lower()
+    if not normalized:
+        return ""
+    if "refresh_token_authentication_error" in normalized or "unsupported_token_type" in normalized:
+        return (
+            "Rotate SCHWAB_REFRESH_TOKEN via ./scripts/rotate_schwab_token.sh "
+            "and update the GitHub secret."
+        )
+    if "invalid_client" in normalized or "unauthorized_client" in normalized:
+        return "Verify SCHWAB_CLIENT_ID and SCHWAB_CLIENT_SECRET."
+    return ""
+
+
 def _normalize_series(series: pd.Series, series_name: str) -> pd.Series:
     """Return a clean, sorted float series with a timezone-naive datetime index."""
     clean = series.copy()
@@ -532,8 +547,12 @@ def _schwab_refresh_access_token() -> str:
             raw_body = response.read().decode("utf-8", errors="replace")
     except error.HTTPError as exc:
         body = _extract_api_error_summary(_decode_http_error_body(exc))
+        action = _schwab_auth_action(body)
+        detail = body or str(getattr(exc, "reason", "")).strip() or "unknown_error"
+        if action:
+            detail = f"{detail} Action: {action}"
         raise MarketDataError(
-            f"Failed to refresh Schwab access token (HTTP {exc.code}): {body or exc.reason}",
+            f"Failed to refresh Schwab access token (HTTP {exc.code}): {detail}",
             provider="schwab",
             error_type="auth_error",
             retryable=False,

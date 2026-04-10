@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+
 import pandas as pd
 import pytest
 
@@ -97,6 +99,36 @@ def test_market_data_provider_auto_uses_public_when_schwab_creds_missing(monkeyp
 def test_extract_api_error_summary_prefers_json_fields() -> None:
     raw = '{"error":"invalid_grant","error_description":"The refresh token is invalid"}'
     assert data_fetch._extract_api_error_summary(raw) == "invalid_grant | The refresh token is invalid"
+
+
+def test_schwab_auth_action_recommends_rotation_for_refresh_token_failures() -> None:
+    raw = '{"error":"refresh_token_authentication_error","error_description":"unsupported_token_type"}'
+
+    action = data_fetch._schwab_auth_action(raw)
+
+    assert "Rotate SCHWAB_REFRESH_TOKEN" in action
+
+
+def test_schwab_refresh_access_token_surfaces_rotation_action(monkeypatch) -> None:
+    body = '{"error":"refresh_token_authentication_error","error_description":"unsupported_token_type"}'
+
+    def fake_urlopen(req, timeout: int = 12):
+        del req, timeout
+        raise data_fetch.error.HTTPError(
+            url="https://api.schwabapi.com/v1/oauth/token",
+            code=400,
+            msg="Bad Request",
+            hdrs=None,
+            fp=io.BytesIO(body.encode("utf-8")),
+        )
+
+    monkeypatch.setenv("SCHWAB_REFRESH_TOKEN", "refresh-token")
+    monkeypatch.setenv("SCHWAB_CLIENT_ID", "client-id")
+    monkeypatch.setenv("SCHWAB_CLIENT_SECRET", "client-secret")
+    monkeypatch.setattr(data_fetch.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(data_fetch.MarketDataError, match="Action: Rotate SCHWAB_REFRESH_TOKEN"):
+        data_fetch._schwab_refresh_access_token()
 
 
 def test_fetch_fred_series_retries_timeout_then_succeeds(monkeypatch) -> None:
