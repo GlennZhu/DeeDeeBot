@@ -143,6 +143,7 @@ Optional environment knobs:
 - `FRED_FETCH_MAX_ATTEMPTS` (default `4`)
 - `FRED_FETCH_RETRY_BACKOFF_SECONDS` (default `1.0`)
 - `SCHWAB_ACCESS_TOKEN` (optional local override)
+- `SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN` (`true` to export a minted access token from `scripts/schwab_auth_preflight.py` into `GITHUB_ENV` for downstream steps)
 - `SCHWAB_REFRESH_TOKEN`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET` (optional token refresh flow)
 - `SCHWAB_FETCH_MAX_ATTEMPTS` (default `3`; retries retryable Schwab upstream failures)
 - `SCHWAB_FETCH_RETRY_BACKOFF_SECONDS` (default `0.75`)
@@ -196,6 +197,8 @@ One-time prerequisites:
 - Authenticate once with secret-management permissions: `gh auth login`
 
 If token auth is broken, stock refresh workflows fail with provider-auth errors; rotate Schwab credentials and rerun.
+
+`update_stock_intraday.yml` enables `SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN=true` so each run can reuse the preflight-minted access token in the stock pipeline step. This avoids a second refresh-token exchange in the same run and reduces token churn.
 
 ### Automated Schwab Rotation Reminder
 

@@ -75,12 +75,14 @@ jobs:
           SCHWAB_CLIENT_SECRET: ${{ secrets.SCHWAB_CLIENT_SECRET }}
           SCHWAB_BASE_URL: ${{ secrets.SCHWAB_BASE_URL }}
           SCHWAB_REQUEST_TIMEOUT_SECONDS: "12"
+          SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN: "true"
         run: python scripts/schwab_auth_preflight.py
 
       - name: Run stock-only pipeline
         if: steps.guard.outputs.run_pipeline == 'true'
         env:
           MARKET_DATA_PROVIDER: schwab
+          SCHWAB_ACCESS_TOKEN: ${{ env.SCHWAB_ACCESS_TOKEN }}
           SCHWAB_REFRESH_TOKEN: ${{ secrets.SCHWAB_REFRESH_TOKEN }}
           SCHWAB_CLIENT_ID: ${{ secrets.SCHWAB_CLIENT_ID }}
           SCHWAB_CLIENT_SECRET: ${{ secrets.SCHWAB_CLIENT_SECRET }}

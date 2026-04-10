@@ -63,6 +63,32 @@ load_env_file() {
   printf 'Loaded environment values from %s\n' "${path}"
 }
 
+resolve_repo_from_origin_remote() {
+  local remote_url=""
+  remote_url="$(git -C "${REPO_ROOT}" config --get remote.origin.url 2>/dev/null || true)"
+  if [[ -z "${remote_url}" ]]; then
+    return 0
+  fi
+
+  python3 - "${remote_url}" <<'PY'
+import re
+import sys
+
+remote_url = sys.argv[1].strip()
+patterns = (
+    r"^https://github\.com/([^/]+/[^/]+?)(?:\.git)?$",
+    r"^git@github\.com:([^/]+/[^/]+?)(?:\.git)?$",
+    r"^ssh://git@github\.com/([^/]+/[^/]+?)(?:\.git)?$",
+)
+for pattern in patterns:
+    match = re.match(pattern, remote_url)
+    if match:
+        print(match.group(1))
+        raise SystemExit(0)
+raise SystemExit(0)
+PY
+}
+
 resolve_target_repo() {
   local explicit_repo="$1"
   if [[ -n "${explicit_repo}" ]]; then
@@ -70,15 +96,69 @@ resolve_target_repo() {
     return 0
   fi
 
+  local repo_from_origin=""
+  repo_from_origin="$(resolve_repo_from_origin_remote)"
+
   local env_repo="${GH_REPO:-}"
+  if [[ -n "${repo_from_origin}" ]]; then
+    if [[ -n "${env_repo}" && "${env_repo}" != "${repo_from_origin}" ]]; then
+      printf 'Warning: GH_REPO=%s differs from repo origin %s; using repo origin. Pass --repo to override.\n' "${env_repo}" "${repo_from_origin}" >&2
+    fi
+    printf '%s\n' "${repo_from_origin}"
+    return 0
+  fi
+
   if [[ -n "${env_repo}" ]]; then
     printf '%s\n' "${env_repo}"
     return 0
   fi
 
   local detected_repo=""
-  detected_repo="$(gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
+  detected_repo="$(cd "${REPO_ROOT}" && gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
   printf '%s\n' "${detected_repo}"
+}
+
+github_secret_updated_at() {
+  local repo="$1"
+  local name="$2"
+  gh api "repos/${repo}/actions/secrets/${name}" --jq '.updated_at' 2>/dev/null || true
+}
+
+verify_github_secret_update() {
+  local repo="$1"
+  local name="$2"
+  local previous_updated_at="$3"
+  local previous_local_token="$4"
+  local new_token="$5"
+  local current_updated_at=""
+  local attempt
+
+  for attempt in 1 2 3 4 5; do
+    current_updated_at="$(github_secret_updated_at "${repo}" "${name}")"
+    if [[ -n "${current_updated_at}" && "${current_updated_at}" != "${previous_updated_at}" ]]; then
+      printf 'Verified GitHub secret %s for %s (updated_at=%s)\n' "${name}" "${repo}" "${current_updated_at}"
+      return 0
+    fi
+    sleep 1
+  done
+
+  if [[ "${new_token}" != "${previous_local_token}" ]]; then
+    printf 'ERROR: GitHub secret %s for %s did not show a metadata update after gh secret set.\n' "${name}" "${repo}" >&2
+    if [[ -n "${previous_updated_at}" ]]; then
+      printf 'Previous updated_at: %s\n' "${previous_updated_at}" >&2
+    fi
+    if [[ -n "${current_updated_at}" ]]; then
+      printf 'Current updated_at: %s\n' "${current_updated_at}" >&2
+    fi
+    printf 'Check gh auth, target repo selection, and GitHub secret permissions.\n' >&2
+    exit 1
+  fi
+
+  if [[ -n "${current_updated_at}" ]]; then
+    printf 'Warning: GitHub secret %s metadata for %s remained %s; token may be unchanged.\n' "${name}" "${repo}" "${current_updated_at}" >&2
+  else
+    printf 'Warning: unable to verify GitHub secret %s metadata for %s after update.\n' "${name}" "${repo}" >&2
+  fi
 }
 
 verify_refresh_token_env_var() {
@@ -222,11 +302,14 @@ load_env_file "${ENV_FILE}"
 
 require_command python3
 require_command curl
+require_command git
 require_env SCHWAB_CLIENT_ID
 require_env SCHWAB_CLIENT_SECRET
 
 SCHWAB_REDIRECT_URI="${CLI_REDIRECT_URI:-${SCHWAB_REDIRECT_URI:-https://127.0.0.1}}"
 TARGET_REPO=""
+PREVIOUS_LOCAL_REFRESH_TOKEN="${SCHWAB_REFRESH_TOKEN:-}"
+SECRET_UPDATED_AT_BEFORE=""
 
 if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
   require_command gh
@@ -240,6 +323,7 @@ if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
     exit 1
   fi
   printf 'GitHub secret target repo: %s\n' "${TARGET_REPO}"
+  SECRET_UPDATED_AT_BEFORE="$(github_secret_updated_at "${TARGET_REPO}" SCHWAB_REFRESH_TOKEN)"
 fi
 
 AUTH_URL="$(python3 - "${SCHWAB_CLIENT_ID}" "${SCHWAB_REDIRECT_URI}" "${SCHWAB_OAUTH_AUTHORIZE_URL}" <<'PY'
@@ -351,6 +435,7 @@ verify_refresh_token_env_var "${ENV_FILE}" "${new_refresh_token}"
 if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
   printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${TARGET_REPO}"
   printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s\n' "${TARGET_REPO}"
+  verify_github_secret_update "${TARGET_REPO}" "SCHWAB_REFRESH_TOKEN" "${SECRET_UPDATED_AT_BEFORE}" "${PREVIOUS_LOCAL_REFRESH_TOKEN}" "${new_refresh_token}"
 
   rotation_timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   if gh variable set "${SCHWAB_ROTATION_TIMESTAMP_VAR}" --repo "${TARGET_REPO}" --body "${rotation_timestamp_utc}" >/dev/null; then
