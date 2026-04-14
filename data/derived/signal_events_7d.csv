@@ -1,16 +1,15 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-04-07T17:37:24Z,2026-04-07 13:37:24 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,331.95,,ok,
 2026-04-07T18:37:44Z,2026-04-07 14:37:44 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,331.27,,ok,
 2026-04-07T20:08:34Z,2026-04-07 16:08:34 EDT,stock,cleared,AVGO,AVGO,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,334.085,,ok,
 2026-04-07T20:08:34Z,2026-04-07 16:08:34 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_breakdown_below_ma200,🚨 Breakdown (MA200): More than 2% below,2026-04-07,,178.13,,ok,
 2026-04-07T20:08:34Z,2026-04-07 16:08:34 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,178.13,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,605.1384,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-07,,401.5,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,605.1384,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,312.7494,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,40.76,,ok,
 2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,183.2601,,ok,
 2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,NVDA,NVDA,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,183.2601,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,40.76,,ok,
-2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,312.7494,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-07,,401.5,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_last_stand_ma200,⚠️ Critical Support (MA200): Within +1% / -2%,2026-04-07,,605.1384,,ok,
+2026-04-08T00:41:22Z,2026-04-07 20:41:22 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,605.1384,,ok,
 2026-04-08T08:18:27Z,2026-04-08 04:18:27 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-07,,410.42,,ok,KEEPING_PACE_OR_LEADING
 2026-04-08T08:18:27Z,2026-04-08 04:18:27 EDT,stock,cleared,MU,MU,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-07,,410.42,,ok,
 2026-04-08T14:12:07Z,2026-04-08 10:12:07 EDT,stock,triggered,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-08,,181.58,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
@@ -18,8 +17,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-08T14:12:07Z,2026-04-08 10:12:07 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-08,,181.58,,ok,
 2026-04-08T16:43:41Z,2026-04-08 12:43:41 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-08,,348.7,,ok,
 2026-04-08T21:08:52Z,2026-04-08 17:08:52 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-08,,350.19,,ok,
-2026-04-08T23:22:35Z,2026-04-08 19:22:35 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-08,,402.1,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
 2026-04-08T23:22:35Z,2026-04-08 19:22:35 EDT,stock,triggered,MU,MU,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-08,,402.1,,ok,
+2026-04-08T23:22:35Z,2026-04-08 19:22:35 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-08,,402.1,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
 2026-04-10T03:58:07Z,2026-04-09 23:58:07 EDT,stock,cleared,MU,MU,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-09,,418.2,,ok,
 2026-04-10T03:58:07Z,2026-04-09 23:58:07 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-09,,183.05,,ok,RS_TREND_DOWN
 2026-04-10T03:58:07Z,2026-04-09 23:58:07 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-09,,609.38,,ok,
