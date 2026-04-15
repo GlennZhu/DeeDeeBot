@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-04-08T16:43:41Z,2026-04-08 12:43:41 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-08,,348.7,,ok,
 2026-04-08T21:08:52Z,2026-04-08 17:08:52 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-08,,350.19,,ok,
 2026-04-08T23:22:35Z,2026-04-08 19:22:35 EDT,stock,triggered,MU,MU,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-08,,402.1,,ok,
 2026-04-08T23:22:35Z,2026-04-08 19:22:35 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-08,,402.1,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
