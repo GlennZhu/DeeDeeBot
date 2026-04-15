@@ -13,8 +13,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-13T08:20:45Z,2026-04-13 04:20:45 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-10,,185.9,,ok,
 2026-04-13T08:20:45Z,2026-04-13 04:20:45 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-04-10,,606.94,,ok,
 2026-04-13T11:38:17Z,2026-04-13 07:38:17 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-04-10,,611.07,,ok,
-2026-04-13T12:44:02Z,2026-04-13 08:44:02 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-04-10,,607.7,,ok,
 2026-04-13T12:44:02Z,2026-04-13 08:44:02 EDT,stock,triggered,NVDA,NVDA,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-10,,185.81,,ok,
+2026-04-13T12:44:02Z,2026-04-13 08:44:02 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-04-10,,607.7,,ok,
 2026-04-13T14:18:27Z,2026-04-13 10:18:27 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-04-13,,610.4201,,ok,
 2026-04-13T14:18:27Z,2026-04-13 10:18:27 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-13,,610.4201,,ok,
 2026-04-13T16:51:02Z,2026-04-13 12:51:02 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-13,,614.61,,ok,
@@ -30,3 +30,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-15T19:56:57Z,2026-04-15 15:56:57 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-15,,42.575,,ok,RS_TREND_DOWN
 2026-04-15T20:38:27Z,2026-04-15 16:38:27 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-15,,42.38,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-15T22:24:58Z,2026-04-15 18:24:58 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-15,,42.55,,ok,RS_TREND_DOWN
+2026-04-15T23:05:32Z,2026-04-15 19:05:32 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-15,,42.41,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
