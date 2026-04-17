@@ -202,6 +202,7 @@ Optional environment knobs:
 - `FRED_FETCH_MAX_ATTEMPTS` (default `4`)
 - `FRED_FETCH_RETRY_BACKOFF_SECONDS` (default `1.0`)
 - `SCHWAB_ACCESS_TOKEN` (optional local override)
+- `SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN` (`true` to export a minted access token from `scripts/schwab_auth_preflight.py` into `GITHUB_ENV` for downstream steps)
 - `SCHWAB_REFRESH_TOKEN`, `SCHWAB_CLIENT_ID`, `SCHWAB_CLIENT_SECRET` (optional token refresh flow)
 - `SCHWAB_FETCH_MAX_ATTEMPTS` (default `3`; retries retryable Schwab upstream failures)
 - `SCHWAB_FETCH_RETRY_BACKOFF_SECONDS` (default `0.75`)
@@ -212,15 +213,20 @@ Optional environment knobs:
 
 ## Weekly Schwab Token Rotation
 
-Use the semi-automated helper to rotate `SCHWAB_REFRESH_TOKEN` (expected cadence is about every 7 days):
+Run the helper from the `BingBingBot` repo root to rotate `SCHWAB_REFRESH_TOKEN` once per week (expected cadence is about every 7 days):
 
 ```bash
 ./scripts/rotate_schwab_token.sh
 ```
 
-By default, the script updates your local env file token, GitHub secret `SCHWAB_REFRESH_TOKEN`, and repository variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC`.
+By default, one run updates:
 
-The script auto-loads `.env.schwab.local` (ignored by git because `.env.*` is in `.gitignore`).
+- `BingBingBot/.env.schwab.local`
+- `../StockOpportunityScanner/.env.local`
+- GitHub secret `SCHWAB_REFRESH_TOKEN` for both repos
+- GitHub variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` for both repos using one shared UTC timestamp
+
+The script auto-loads `.env.schwab.local` for Schwab credentials (ignored by git because `.env.*` is in `.gitignore`).
 Create that file locally:
 
 ```bash
@@ -232,11 +238,16 @@ GH_REPO='owner/repo'
 EOF
 ```
 
-You can also point to a custom file, pin a specific repo, or skip GitHub secret update:
+The default companion checkout is `../StockOpportunityScanner`. If your scanner repo lives somewhere else, point the script at it explicitly.
+
+You can also point to custom files, pin specific repos, disable the Stock companion sync, or skip GitHub secret updates:
 
 ```bash
 ./scripts/rotate_schwab_token.sh --env-file /path/to/local.env
 ./scripts/rotate_schwab_token.sh --repo <owner>/<repo>
+./scripts/rotate_schwab_token.sh --stock-root /path/to/StockOpportunityScanner
+./scripts/rotate_schwab_token.sh --stock-env-file .env.local --stock-repo <owner>/<repo>
+./scripts/rotate_schwab_token.sh --no-stock-sync
 ./scripts/rotate_schwab_token.sh --no-github-secret
 ```
 
@@ -244,10 +255,11 @@ The helper will:
 
 - Open/print the Schwab authorize URL
 - Prompt for the full browser redirect URL
-- Exchange code for tokens and validate `refresh_token` exists
-- Update `SCHWAB_REFRESH_TOKEN` in the selected env file
-- Update repository secret `SCHWAB_REFRESH_TOKEN` using `gh secret set` (auto-detected repo, or `--repo`/`GH_REPO`)
-- Update repository variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` (used by token-expiry reminder workflow)
+- Exchange code for tokens once and validate `refresh_token` exists
+- Update `SCHWAB_REFRESH_TOKEN` in Bing and, unless disabled, Stock local env files
+- Update repository secret `SCHWAB_REFRESH_TOKEN` for Bing and, unless disabled, Stock
+- Update repository variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` for Bing and, unless disabled, Stock
+- Fail before opening the browser if any enabled local or GitHub target cannot be resolved cleanly
 
 One-time prerequisites:
 
@@ -255,6 +267,8 @@ One-time prerequisites:
 - Authenticate once with secret-management permissions: `gh auth login`
 
 If token auth is broken, stock refresh workflows fail with provider-auth errors; rotate Schwab credentials and rerun.
+
+`update_stock_intraday.yml` enables `SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN=true` so each run can reuse the preflight-minted access token in the stock pipeline step. This avoids a second refresh-token exchange in the same run and reduces token churn.
 
 ### Automated Schwab Rotation Reminder
 

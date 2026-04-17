@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from urllib import error, parse, request
 
 SCHWAB_BASE_URL = "https://api.schwabapi.com"
@@ -123,6 +124,37 @@ def _auth_failure_action(message: str) -> str:
     return ""
 
 
+def _is_truthy(raw_value: str) -> bool:
+    return str(raw_value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _export_access_token_if_requested(access_token: str, expires_in: int) -> None:
+    if not _is_truthy(str(os.getenv("SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN", ""))):
+        return
+
+    output_path = str(os.getenv("GITHUB_ENV", "")).strip()
+    if not output_path:
+        raise RuntimeError(
+            "SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN is enabled but GITHUB_ENV is not set."
+        )
+
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=max(1, int(expires_in)))
+    expires_at_text = expires_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    if _is_truthy(str(os.getenv("GITHUB_ACTIONS", ""))):
+        print(f"::add-mask::{access_token}")
+
+    with open(output_path, "a", encoding="utf-8") as fh:
+        fh.write(f"SCHWAB_ACCESS_TOKEN={access_token}\n")
+        fh.write(f"SCHWAB_ACCESS_TOKEN_EXPIRES_IN={int(expires_in)}\n")
+        fh.write(f"SCHWAB_ACCESS_TOKEN_EXPIRES_AT_UTC={expires_at_text}\n")
+
+    print(
+        "schwab_auth_preflight_exported_access_token "
+        f"expires_in={int(expires_in)} "
+        f"expires_at_utc={expires_at_text}"
+    )
+
+
 def main() -> int:
     missing = _missing_required_env()
     if missing:
@@ -225,6 +257,16 @@ def main() -> int:
         print(
             "schwab_auth_preflight_failed "
             "missing_required_fields=access_token,expires_in",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        _export_access_token_if_requested(access_token, expires_in)
+    except Exception as exc:
+        print(
+            "schwab_auth_preflight_failed "
+            f"action=export_access_token message={exc}",
             file=sys.stderr,
         )
         return 1
