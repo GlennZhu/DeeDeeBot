@@ -102,11 +102,70 @@ Watchlist editing is disabled in the Streamlit UI; edit `data/derived/stock_watc
 
 ## Local Setup
 
+### macOS
+
+Recommended local baseline:
+
+- macOS Terminal with `zsh`
+- Python `3.11` (matches GitHub Actions)
+- Homebrew
+- GitHub CLI (`gh`) only if you plan to use `./scripts/rotate_schwab_token.sh`
+
+1. Install Apple Command Line Tools:
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
+xcode-select --install
+```
+
+2. Install Homebrew (skip if already installed):
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
+
+If `brew` is not available after install, follow the final Homebrew instructions to add it to your shell profile, then open a new Terminal window.
+
+3. Install Python `3.11`:
+
+```bash
+brew install python@3.11
+```
+
+Optional, if you want to rotate Schwab tokens from your Mac:
+
+```bash
+brew install gh
+gh auth login
+```
+
+4. Create and activate a virtual environment in the repo root:
+
+```bash
+cd /path/to/DeeDeeBot
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
+
+5. Verify the interpreter inside the venv:
+
+```bash
+python --version
+```
+
+It should report Python `3.11.x`.
+
+If you already have Python `3.11` available on your Mac, the shortest path is:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+All commands below assume the virtual environment is active. If you are using a different shell or platform, only the activation step changes (for example, PowerShell uses `.venv\Scripts\Activate.ps1`).
 
 ## Run Data Pipeline
 
