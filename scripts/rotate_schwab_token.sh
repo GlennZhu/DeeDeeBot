@@ -532,7 +532,12 @@ if [[ "${http_status}" -lt 200 || "${http_status}" -ge 300 ]]; then
   exit 1
 fi
 
-mapfile -t token_fields < <(python3 - "${response_file}" <<'PY'
+{
+  # macOS still ships Bash 3.2, which does not provide mapfile/readarray.
+  IFS= read -r -d '' new_refresh_token
+  IFS= read -r -d '' access_expires_in
+  IFS= read -r -d '' refresh_expires_in
+} < <(python3 - "${response_file}" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -550,15 +555,14 @@ if not refresh_token:
 
 access_expires_in = payload.get("expires_in")
 refresh_expires_in = payload.get("refresh_token_expires_in")
-print(refresh_token)
-print("" if access_expires_in is None else str(access_expires_in))
-print("" if refresh_expires_in is None else str(refresh_expires_in))
+sys.stdout.write(refresh_token)
+sys.stdout.write("\0")
+sys.stdout.write("" if access_expires_in is None else str(access_expires_in))
+sys.stdout.write("\0")
+sys.stdout.write("" if refresh_expires_in is None else str(refresh_expires_in))
+sys.stdout.write("\0")
 PY
 )
-
-new_refresh_token="${token_fields[0]:-}"
-access_expires_in="${token_fields[1]:-}"
-refresh_expires_in="${token_fields[2]:-}"
 rotation_timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
 if [[ -z "${new_refresh_token}" ]]; then
