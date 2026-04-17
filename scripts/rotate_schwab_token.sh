@@ -3,19 +3,29 @@ set -euo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEFAULT_STOCK_ROOT="${REPO_ROOT}/../StockOpportunityScanner"
 SCHWAB_OAUTH_AUTHORIZE_URL="${SCHWAB_OAUTH_AUTHORIZE_URL:-https://api.schwabapi.com/v1/oauth/authorize}"
 SCHWAB_OAUTH_TOKEN_URL="${SCHWAB_OAUTH_TOKEN_URL:-https://api.schwabapi.com/v1/oauth/token}"
 SCHWAB_ROTATION_TIMESTAMP_VAR="${SCHWAB_ROTATION_TIMESTAMP_VAR:-SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC}"
 ENV_FILE="${REPO_ROOT}/.env.schwab.local"
+STOCK_ROOT="${DEFAULT_STOCK_ROOT}"
+STOCK_ENV_FILE=""
 
 usage() {
   cat <<EOF_USAGE
-Usage: ${SCRIPT_NAME} [--env-file PATH] [--redirect-uri URI] [--repo owner/repo] [--no-open] [--print-token] [--no-github-secret]
+Usage: ${SCRIPT_NAME} [--env-file PATH] [--redirect-uri URI] [--repo owner/repo] [--stock-root PATH] [--stock-env-file PATH] [--stock-repo owner/repo] [--no-stock-sync] [--no-open] [--print-token] [--no-github-secret]
 
-This script reuses the auth flow from StockOpportunityScanner and rotates SCHWAB_REFRESH_TOKEN.
-By default it updates ${ENV_FILE}, GitHub secret SCHWAB_REFRESH_TOKEN, and
-GitHub variable ${SCHWAB_ROTATION_TIMESTAMP_VAR} (UTC timestamp of last successful rotation).
-Use --no-github-secret to skip secret update.
+Rotate SCHWAB_REFRESH_TOKEN once and fan the refreshed token out to BingBingBot and,
+by default, the StockOpportunityScanner companion checkout.
+
+Default targets:
+  - Bing local env file: ${ENV_FILE}
+  - Bing GitHub secret: SCHWAB_REFRESH_TOKEN
+  - Bing GitHub variable: ${SCHWAB_ROTATION_TIMESTAMP_VAR}
+  - Stock companion root: ${DEFAULT_STOCK_ROOT}
+  - Stock local env file: <stock-root>/.env.local
+  - Stock GitHub secret: SCHWAB_REFRESH_TOKEN
+  - Stock GitHub variable: ${SCHWAB_ROTATION_TIMESTAMP_VAR}
 
 Required environment variables:
   SCHWAB_CLIENT_ID
@@ -23,30 +33,45 @@ Required environment variables:
 
 Optional environment variables:
   SCHWAB_REDIRECT_URI (default: https://127.0.0.1)
-  GH_REPO             (fallback target repo if --repo is omitted)
+  GH_REPO             (fallback target repo for Bing if --repo is omitted)
   SCHWAB_ROTATION_TIMESTAMP_VAR (default: SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC)
+
+Behavior:
+  1) Resolve and validate every enabled target before opening the browser.
+  2) Build the Schwab OAuth authorize URL and prompt for the redirect URL.
+  3) Exchange the authorization code once for fresh tokens.
+  4) Update SCHWAB_REFRESH_TOKEN in Bing and, unless disabled, Stock env files.
+  5) Update GitHub secrets and rotation timestamp variables unless --no-github-secret is used.
 
 Examples:
   ${SCRIPT_NAME}
-  ${SCRIPT_NAME} --env-file .env.schwab.local --redirect-uri https://127.0.0.1
-  ${SCRIPT_NAME} --repo owner/repo --print-token
-  ${SCRIPT_NAME} --no-github-secret
+  ${SCRIPT_NAME} --stock-root ../StockOpportunityScanner
+  ${SCRIPT_NAME} --stock-env-file .env.local --stock-repo owner/StockOpportunityScanner
+  ${SCRIPT_NAME} --env-file .env.schwab.local --repo owner/BingBingBot --no-stock-sync
+  ${SCRIPT_NAME} --no-github-secret --print-token
 EOF_USAGE
+}
+
+error() {
+  printf 'ERROR: %s\n' "$1" >&2
+  exit 1
+}
+
+warn() {
+  printf 'Warning: %s\n' "$1" >&2
 }
 
 require_command() {
   local cmd="$1"
   if ! command -v "${cmd}" >/dev/null 2>&1; then
-    printf 'ERROR: required command not found: %s\n' "${cmd}" >&2
-    exit 1
+    error "required command not found: ${cmd}"
   fi
 }
 
 require_env() {
   local name="$1"
   if [[ -z "${!name:-}" ]]; then
-    printf 'ERROR: required environment variable is missing: %s\n' "${name}" >&2
-    exit 1
+    error "required environment variable is missing: ${name}"
   fi
 }
 
@@ -63,9 +88,25 @@ load_env_file() {
   printf 'Loaded environment values from %s\n' "${path}"
 }
 
+resolve_path() {
+  local base_dir="$1"
+  local raw_path="$2"
+  python3 - "${base_dir}" "${raw_path}" <<'PY'
+from pathlib import Path
+import sys
+
+base_dir = Path(sys.argv[1]).expanduser()
+raw_path = Path(sys.argv[2]).expanduser()
+if not raw_path.is_absolute():
+    raw_path = base_dir / raw_path
+print(raw_path)
+PY
+}
+
 resolve_repo_from_origin_remote() {
+  local repo_root="$1"
   local remote_url=""
-  remote_url="$(git -C "${REPO_ROOT}" config --get remote.origin.url 2>/dev/null || true)"
+  remote_url="$(git -C "${repo_root}" config --get remote.origin.url 2>/dev/null || true)"
   if [[ -z "${remote_url}" ]]; then
     return 0
   fi
@@ -91,18 +132,19 @@ PY
 
 resolve_target_repo() {
   local explicit_repo="$1"
+  local repo_root="$2"
+  local env_repo="$3"
   if [[ -n "${explicit_repo}" ]]; then
     printf '%s\n' "${explicit_repo}"
     return 0
   fi
 
   local repo_from_origin=""
-  repo_from_origin="$(resolve_repo_from_origin_remote)"
+  repo_from_origin="$(resolve_repo_from_origin_remote "${repo_root}")"
 
-  local env_repo="${GH_REPO:-}"
   if [[ -n "${repo_from_origin}" ]]; then
     if [[ -n "${env_repo}" && "${env_repo}" != "${repo_from_origin}" ]]; then
-      printf 'Warning: GH_REPO=%s differs from repo origin %s; using repo origin. Pass --repo to override.\n' "${env_repo}" "${repo_from_origin}" >&2
+      warn "GH_REPO=${env_repo} differs from repo origin ${repo_from_origin}; using repo origin. Pass --repo to override."
     fi
     printf '%s\n' "${repo_from_origin}"
     return 0
@@ -114,7 +156,7 @@ resolve_target_repo() {
   fi
 
   local detected_repo=""
-  detected_repo="$(cd "${REPO_ROOT}" && gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
+  detected_repo="$(cd "${repo_root}" && gh repo view --json nameWithOwner -q '.nameWithOwner' 2>/dev/null || true)"
   printf '%s\n' "${detected_repo}"
 }
 
@@ -155,10 +197,37 @@ verify_github_secret_update() {
   fi
 
   if [[ -n "${current_updated_at}" ]]; then
-    printf 'Warning: GitHub secret %s metadata for %s remained %s; token may be unchanged.\n' "${name}" "${repo}" "${current_updated_at}" >&2
+    warn "GitHub secret ${name} metadata for ${repo} remained ${current_updated_at}; token may be unchanged."
   else
-    printf 'Warning: unable to verify GitHub secret %s metadata for %s after update.\n' "${name}" "${repo}" >&2
+    warn "unable to verify GitHub secret ${name} metadata for ${repo} after update."
   fi
+}
+
+read_refresh_token_env_var() {
+  local path="$1"
+  python3 - "${path}" <<'PY'
+import re
+import shlex
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1]).expanduser()
+if not env_path.exists():
+    raise SystemExit(0)
+
+pattern = re.compile(r"^\s*SCHWAB_REFRESH_TOKEN\s*=\s*(.*)\s*$")
+for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+    match = pattern.match(line)
+    if not match:
+        continue
+    raw_value = match.group(1)
+    try:
+        parsed = shlex.split(f"x={raw_value}", posix=True)[0].split("=", 1)[1]
+    except Exception:
+        parsed = raw_value
+    print(parsed)
+    raise SystemExit(0)
+PY
 }
 
 verify_refresh_token_env_var() {
@@ -237,34 +306,64 @@ env_path.write_text("".join(output), encoding="utf-8")
 PY
 }
 
+update_rotation_timestamp_var() {
+  local repo="$1"
+  local timestamp_utc="$2"
+  if gh variable set "${SCHWAB_ROTATION_TIMESTAMP_VAR}" --repo "${repo}" --body "${timestamp_utc}" >/dev/null; then
+    printf 'Updated GitHub variable %s for %s (%s)\n' "${SCHWAB_ROTATION_TIMESTAMP_VAR}" "${repo}" "${timestamp_utc}"
+  else
+    warn "unable to update GitHub variable ${SCHWAB_ROTATION_TIMESTAMP_VAR} for ${repo}."
+  fi
+}
+
 CLI_REDIRECT_URI=""
 CLI_TARGET_REPO=""
+CLI_STOCK_REPO=""
 OPEN_BROWSER=true
 PRINT_TOKEN=false
 UPDATE_GITHUB_SECRET=true
+STOCK_SYNC=true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --redirect-uri)
       if [[ -z "${2:-}" ]]; then
-        printf 'ERROR: --redirect-uri requires a value.\n' >&2
-        exit 2
+        error '--redirect-uri requires a value.'
       fi
       CLI_REDIRECT_URI="$2"
       shift 2
       ;;
     --repo)
       if [[ -z "${2:-}" ]]; then
-        printf 'ERROR: --repo requires a value.\n' >&2
-        exit 2
+        error '--repo requires a value.'
       fi
       CLI_TARGET_REPO="$2"
       shift 2
       ;;
+    --stock-root)
+      if [[ -z "${2:-}" ]]; then
+        error '--stock-root requires a value.'
+      fi
+      STOCK_ROOT="$2"
+      shift 2
+      ;;
+    --stock-env-file)
+      if [[ -z "${2:-}" ]]; then
+        error '--stock-env-file requires a value.'
+      fi
+      STOCK_ENV_FILE="$2"
+      shift 2
+      ;;
+    --stock-repo)
+      if [[ -z "${2:-}" ]]; then
+        error '--stock-repo requires a value.'
+      fi
+      CLI_STOCK_REPO="$2"
+      shift 2
+      ;;
     --env-file)
       if [[ -z "${2:-}" ]]; then
-        printf 'ERROR: --env-file requires a value.\n' >&2
-        exit 2
+        error '--env-file requires a value.'
       fi
       ENV_FILE="$2"
       shift 2
@@ -281,6 +380,10 @@ while [[ $# -gt 0 ]]; do
       UPDATE_GITHUB_SECRET=false
       shift
       ;;
+    --no-stock-sync)
+      STOCK_SYNC=false
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -293,37 +396,73 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "${ENV_FILE}" != /* ]]; then
-  ENV_FILE="${REPO_ROOT}/${ENV_FILE}"
-fi
-printf 'Using env file: %s\n' "${ENV_FILE}"
-
-load_env_file "${ENV_FILE}"
-
 require_command python3
 require_command curl
 require_command git
+
+ENV_FILE="$(resolve_path "${REPO_ROOT}" "${ENV_FILE}")"
+printf 'Using Bing env file: %s\n' "${ENV_FILE}"
+load_env_file "${ENV_FILE}"
+
 require_env SCHWAB_CLIENT_ID
 require_env SCHWAB_CLIENT_SECRET
 
 SCHWAB_REDIRECT_URI="${CLI_REDIRECT_URI:-${SCHWAB_REDIRECT_URI:-https://127.0.0.1}}"
-TARGET_REPO=""
-PREVIOUS_LOCAL_REFRESH_TOKEN="${SCHWAB_REFRESH_TOKEN:-}"
-SECRET_UPDATED_AT_BEFORE=""
+BING_TARGET_REPO=""
+STOCK_TARGET_REPO=""
+BING_PREVIOUS_LOCAL_REFRESH_TOKEN="${SCHWAB_REFRESH_TOKEN:-}"
+STOCK_PREVIOUS_LOCAL_REFRESH_TOKEN=""
+BING_SECRET_UPDATED_AT_BEFORE=""
+STOCK_SECRET_UPDATED_AT_BEFORE=""
+
+if [[ "${STOCK_SYNC}" == "true" ]]; then
+  STOCK_ROOT="$(resolve_path "${REPO_ROOT}" "${STOCK_ROOT}")"
+  if [[ ! -d "${STOCK_ROOT}" ]]; then
+    error "stock companion root does not exist: ${STOCK_ROOT}. Pass --stock-root PATH or use --no-stock-sync."
+  fi
+
+  if [[ -z "${STOCK_ENV_FILE}" ]]; then
+    STOCK_ENV_FILE="${STOCK_ROOT}/.env.local"
+  else
+    STOCK_ENV_FILE="$(resolve_path "${STOCK_ROOT}" "${STOCK_ENV_FILE}")"
+  fi
+  STOCK_PREVIOUS_LOCAL_REFRESH_TOKEN="$(read_refresh_token_env_var "${STOCK_ENV_FILE}")"
+fi
 
 if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
   require_command gh
   if ! gh auth status -h github.com >/dev/null 2>&1; then
-    printf 'ERROR: GitHub CLI is not authenticated. Run: gh auth login (or use --no-github-secret).\n' >&2
-    exit 1
+    error 'GitHub CLI is not authenticated. Run: gh auth login (or use --no-github-secret).'
   fi
-  TARGET_REPO="$(resolve_target_repo "${CLI_TARGET_REPO}")"
-  if [[ -z "${TARGET_REPO}" ]]; then
-    printf 'ERROR: unable to resolve target GitHub repo. Pass --repo owner/repo or set GH_REPO.\n' >&2
-    exit 1
+
+  BING_TARGET_REPO="$(resolve_target_repo "${CLI_TARGET_REPO}" "${REPO_ROOT}" "${GH_REPO:-}")"
+  if [[ -z "${BING_TARGET_REPO}" ]]; then
+    error 'unable to resolve Bing GitHub repo. Pass --repo owner/repo or set GH_REPO.'
   fi
-  printf 'GitHub secret target repo: %s\n' "${TARGET_REPO}"
-  SECRET_UPDATED_AT_BEFORE="$(github_secret_updated_at "${TARGET_REPO}" SCHWAB_REFRESH_TOKEN)"
+  BING_SECRET_UPDATED_AT_BEFORE="$(github_secret_updated_at "${BING_TARGET_REPO}" SCHWAB_REFRESH_TOKEN)"
+
+  if [[ "${STOCK_SYNC}" == "true" ]]; then
+    STOCK_TARGET_REPO="$(resolve_target_repo "${CLI_STOCK_REPO}" "${STOCK_ROOT}" "")"
+    if [[ -z "${STOCK_TARGET_REPO}" ]]; then
+      error "unable to resolve Stock GitHub repo from ${STOCK_ROOT}. Pass --stock-repo owner/repo or use --no-stock-sync."
+    fi
+    STOCK_SECRET_UPDATED_AT_BEFORE="$(github_secret_updated_at "${STOCK_TARGET_REPO}" SCHWAB_REFRESH_TOKEN)"
+  fi
+fi
+
+printf 'Bing GitHub secret target repo: %s\n' "${BING_TARGET_REPO:-disabled}"
+if [[ "${UPDATE_GITHUB_SECRET}" == "false" ]]; then
+  printf 'GitHub secret/variable updates disabled via --no-github-secret\n'
+fi
+
+if [[ "${STOCK_SYNC}" == "true" ]]; then
+  printf 'Using Stock companion root: %s\n' "${STOCK_ROOT}"
+  printf 'Using Stock env file: %s\n' "${STOCK_ENV_FILE}"
+  if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
+    printf 'Stock GitHub secret target repo: %s\n' "${STOCK_TARGET_REPO}"
+  fi
+else
+  printf 'Stock companion sync disabled via --no-stock-sync\n'
 fi
 
 AUTH_URL="$(python3 - "${SCHWAB_CLIENT_ID}" "${SCHWAB_REDIRECT_URI}" "${SCHWAB_OAUTH_AUTHORIZE_URL}" <<'PY'
@@ -356,8 +495,7 @@ fi
 printf 'Paste FULL redirect URL from browser: '
 IFS= read -r REDIRECT_URL
 if [[ -z "${REDIRECT_URL}" ]]; then
-  printf 'ERROR: redirect URL is required.\n' >&2
-  exit 1
+  error 'redirect URL is required.'
 fi
 
 AUTH_CODE="$(python3 - "${REDIRECT_URL}" <<'PY'
@@ -421,10 +559,10 @@ PY
 new_refresh_token="${token_fields[0]:-}"
 access_expires_in="${token_fields[1]:-}"
 refresh_expires_in="${token_fields[2]:-}"
+rotation_timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
 if [[ -z "${new_refresh_token}" ]]; then
-  printf 'ERROR: no refresh token extracted from token response.\n' >&2
-  exit 1
+  error 'no refresh token extracted from token response.'
 fi
 
 upsert_refresh_token_env_var "${ENV_FILE}" "${new_refresh_token}"
@@ -432,16 +570,27 @@ chmod 600 "${ENV_FILE}" 2>/dev/null || true
 printf 'Updated SCHWAB_REFRESH_TOKEN in %s\n' "${ENV_FILE}"
 verify_refresh_token_env_var "${ENV_FILE}" "${new_refresh_token}"
 
-if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
-  printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${TARGET_REPO}"
-  printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s\n' "${TARGET_REPO}"
-  verify_github_secret_update "${TARGET_REPO}" "SCHWAB_REFRESH_TOKEN" "${SECRET_UPDATED_AT_BEFORE}" "${PREVIOUS_LOCAL_REFRESH_TOKEN}" "${new_refresh_token}"
+if [[ "${STOCK_SYNC}" == "true" ]]; then
+  upsert_refresh_token_env_var "${STOCK_ENV_FILE}" "${new_refresh_token}"
+  chmod 600 "${STOCK_ENV_FILE}" 2>/dev/null || true
+  printf 'Updated SCHWAB_REFRESH_TOKEN in %s\n' "${STOCK_ENV_FILE}"
+  verify_refresh_token_env_var "${STOCK_ENV_FILE}" "${new_refresh_token}"
+fi
 
-  rotation_timestamp_utc="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-  if gh variable set "${SCHWAB_ROTATION_TIMESTAMP_VAR}" --repo "${TARGET_REPO}" --body "${rotation_timestamp_utc}" >/dev/null; then
-    printf 'Updated GitHub variable %s for %s (%s)\n' "${SCHWAB_ROTATION_TIMESTAMP_VAR}" "${TARGET_REPO}" "${rotation_timestamp_utc}"
-  else
-    printf 'Warning: unable to update GitHub variable %s for %s.\n' "${SCHWAB_ROTATION_TIMESTAMP_VAR}" "${TARGET_REPO}" >&2
+if [[ "${UPDATE_GITHUB_SECRET}" == "true" ]]; then
+  printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${BING_TARGET_REPO}"
+  printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s\n' "${BING_TARGET_REPO}"
+  verify_github_secret_update "${BING_TARGET_REPO}" "SCHWAB_REFRESH_TOKEN" "${BING_SECRET_UPDATED_AT_BEFORE}" "${BING_PREVIOUS_LOCAL_REFRESH_TOKEN}" "${new_refresh_token}"
+
+  if [[ "${STOCK_SYNC}" == "true" ]]; then
+    printf '%s' "${new_refresh_token}" | gh secret set SCHWAB_REFRESH_TOKEN --repo "${STOCK_TARGET_REPO}"
+    printf 'Updated GitHub secret SCHWAB_REFRESH_TOKEN for %s\n' "${STOCK_TARGET_REPO}"
+    verify_github_secret_update "${STOCK_TARGET_REPO}" "SCHWAB_REFRESH_TOKEN" "${STOCK_SECRET_UPDATED_AT_BEFORE}" "${STOCK_PREVIOUS_LOCAL_REFRESH_TOKEN}" "${new_refresh_token}"
+  fi
+
+  update_rotation_timestamp_var "${BING_TARGET_REPO}" "${rotation_timestamp_utc}"
+  if [[ "${STOCK_SYNC}" == "true" ]]; then
+    update_rotation_timestamp_var "${STOCK_TARGET_REPO}" "${rotation_timestamp_utc}"
   fi
 fi
 
