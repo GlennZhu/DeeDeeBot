@@ -129,7 +129,7 @@ def _schwab_auth_action(raw_text: str) -> str:
         return ""
     if "refresh_token_authentication_error" in normalized or "unsupported_token_type" in normalized:
         return (
-            "Rotate SCHWAB_REFRESH_TOKEN via ./scripts/rotate_schwab_token.sh "
+            "Rotate SCHWAB_REFRESH_TOKEN via the external SchwabTokenRotator helper "
             "and update the GitHub secret."
         )
     if "invalid_client" in normalized or "unauthorized_client" in normalized:

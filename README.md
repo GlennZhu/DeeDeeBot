@@ -109,7 +109,7 @@ Recommended local baseline:
 - macOS Terminal with `zsh`
 - Python `3.11` (matches GitHub Actions)
 - Homebrew
-- GitHub CLI (`gh`) only if you plan to use `./scripts/rotate_schwab_token.sh`
+- GitHub CLI (`gh`) only if you plan to use the external `../SchwabTokenRotator/scripts/rotate_schwab_token.sh` helper
 
 1. Install Apple Command Line Tools:
 
@@ -213,60 +213,22 @@ Optional environment knobs:
 
 ## Weekly Schwab Token Rotation
 
-Run the helper from the `BingBingBot` repo root to rotate `SCHWAB_REFRESH_TOKEN` once per week (expected cadence is about every 7 days):
+The token-rotation helper has been moved into the standalone sibling repo `../SchwabTokenRotator` so this repo no longer owns that operational workflow.
+
+Run the external helper from its repo root:
 
 ```bash
+cd ../SchwabTokenRotator
 ./scripts/rotate_schwab_token.sh
 ```
 
-By default, one run updates:
+That repo now owns the rotation script, setup instructions, target-path overrides, and related operator docs. DeeDeeBot still expects the helper to keep these values current:
 
-- `BingBingBot/.env.schwab.local`
-- `../StockOpportunityScanner/.env.local`
-- GitHub secret `SCHWAB_REFRESH_TOKEN` for both repos
-- GitHub variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` for both repos using one shared UTC timestamp
+- `./.env.schwab.local`
+- GitHub secret `SCHWAB_REFRESH_TOKEN`
+- GitHub variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC`
 
-The script auto-loads `.env.schwab.local` for Schwab credentials (ignored by git because `.env.*` is in `.gitignore`).
-Create that file locally:
-
-```bash
-cat > .env.schwab.local <<'EOF'
-SCHWAB_CLIENT_ID='your_client_id'
-SCHWAB_CLIENT_SECRET='your_client_secret'
-SCHWAB_REDIRECT_URI='https://127.0.0.1'
-GH_REPO='owner/repo'
-EOF
-```
-
-The default companion checkout is `../StockOpportunityScanner`. If your scanner repo lives somewhere else, point the script at it explicitly.
-
-You can also point to custom files, pin specific repos, disable the Stock companion sync, or skip GitHub secret updates:
-
-```bash
-./scripts/rotate_schwab_token.sh --env-file /path/to/local.env
-./scripts/rotate_schwab_token.sh --repo <owner>/<repo>
-./scripts/rotate_schwab_token.sh --stock-root /path/to/StockOpportunityScanner
-./scripts/rotate_schwab_token.sh --stock-env-file .env.local --stock-repo <owner>/<repo>
-./scripts/rotate_schwab_token.sh --no-stock-sync
-./scripts/rotate_schwab_token.sh --no-github-secret
-```
-
-The helper will:
-
-- Open/print the Schwab authorize URL
-- Prompt for the full browser redirect URL
-- Exchange code for tokens once and validate `refresh_token` exists
-- Update `SCHWAB_REFRESH_TOKEN` in Bing and, unless disabled, Stock local env files
-- Update repository secret `SCHWAB_REFRESH_TOKEN` for Bing and, unless disabled, Stock
-- Update repository variable `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` for Bing and, unless disabled, Stock
-- Fail before opening the browser if any enabled local or GitHub target cannot be resolved cleanly
-
-One-time prerequisites:
-
-- Install GitHub CLI (`gh`) unless you plan to always use `--no-github-secret`
-- Authenticate once with secret-management permissions: `gh auth login`
-
-If token auth is broken, stock refresh workflows fail with provider-auth errors; rotate Schwab credentials and rerun.
+If Schwab auth is broken, stock refresh workflows fail with provider-auth errors; rotate the token in `../SchwabTokenRotator` and rerun.
 
 `update_stock_intraday.yml` enables `SCHWAB_PREFLIGHT_EXPORT_ACCESS_TOKEN=true` so each run can reuse the preflight-minted access token in the stock pipeline step. This avoids a second refresh-token exchange in the same run and reduces token churn.
 
@@ -276,7 +238,7 @@ Workflow `.github/workflows/schwab_token_rotation_reminder.yml` runs daily and p
 
 It reads these repository variables:
 
-- `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` (auto-managed by `./scripts/rotate_schwab_token.sh`)
+- `SCHWAB_REFRESH_TOKEN_ROTATED_AT_UTC` (auto-managed by `../SchwabTokenRotator/scripts/rotate_schwab_token.sh`)
 - `SCHWAB_REFRESH_TOKEN_REMIND_AFTER_DAYS` (optional; default `6`)
 - `SCHWAB_REFRESH_TOKEN_EXPIRE_DAYS` (optional; default `7`)
 

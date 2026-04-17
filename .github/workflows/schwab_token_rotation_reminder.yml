@@ -197,7 +197,7 @@ jobs:
                       "color": color,
                       "description": (
                           f"{description}\n\n"
-                          "Run `./scripts/rotate_schwab_token.sh` locally to rotate, "
+                          "Run `../SchwabTokenRotator/scripts/rotate_schwab_token.sh` locally to rotate, "
                           "then the script will update GitHub secret and rotation timestamp variable."
                       ),
                       "fields": [
