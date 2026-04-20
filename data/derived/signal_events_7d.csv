@@ -1,6 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-04-13T14:18:27Z,2026-04-13 10:18:27 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-13,,610.4201,,ok,
-2026-04-13T14:18:27Z,2026-04-13 10:18:27 EDT,stock,cleared,QQQ,QQQ,QQQ,squat_dca_below_ma100,🔵 DCA Zone: Broke below MA100,2026-04-13,,610.4201,,ok,
 2026-04-13T16:51:02Z,2026-04-13 12:51:02 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-13,,614.61,,ok,
 2026-04-13T19:58:33Z,2026-04-13 15:58:33 EDT,stock,triggered,GOOG,GOOG,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-13,,319.2,,ok,
 2026-04-14T14:30:44Z,2026-04-14 10:30:44 EDT,stock,cleared,MSFT,MSFT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-14,,392.4699,,ok,
@@ -22,18 +20,18 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-16T12:56:09Z,2026-04-16 08:56:09 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-15,,446.39,,ok,NEGATIVE_ALPHA_LT_-5PCT
 2026-04-16T19:53:24Z,2026-04-16 15:53:24 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.7362,,ok,RS_TREND_DOWN
 2026-04-16T20:35:41Z,2026-04-16 16:35:41 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.5401,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,GOOG,GOOG,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,333.5,,ok,
-2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,AVGO,AVGO,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,398.9999,,ok,
-2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-04-16,,398.9999,,ok,
-2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,NVDA,NVDA,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,197.8997,,ok,
 2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.61,,ok,RS_TREND_DOWN
+2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,NVDA,NVDA,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,197.8997,,ok,
 2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,QQQ,QQQ,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,640.2313,,ok,
+2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,AVGO,AVGO,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,398.9999,,ok,
+2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,triggered,GOOG,GOOG,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-16,,333.5,,ok,
+2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-04-16,,398.9999,,ok,
 2026-04-17T09:44:19Z,2026-04-17 05:44:19 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-04-16,,398.97,,ok,
 2026-04-17T10:41:46Z,2026-04-17 06:41:46 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.69,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,triggered,AVGO,AVGO,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-17,,404.36,,ok,
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,triggered,QQQ,QQQ,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-17,,647.065,,ok,
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-04-17,,404.36,,ok,
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,triggered,GOOG,GOOG,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-17,,335.19,,ok,
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-17,,43.865,,ok,KEEPING_PACE_OR_LEADING
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,triggered,NVDA,NVDA,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-17,,201.2899,,ok,
-2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,triggered,AVGO,AVGO,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-17,,404.36,,ok,
 2026-04-20T14:08:20Z,2026-04-20 10:08:20 EDT,stock,triggered,MU,MU,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-20,,447.11,,ok,
