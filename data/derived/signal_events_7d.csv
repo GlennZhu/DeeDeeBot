@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-04-14T14:30:44Z,2026-04-14 10:30:44 EDT,stock,cleared,MSFT,MSFT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-14,,392.4699,,ok,
 2026-04-14T18:56:19Z,2026-04-14 14:56:19 EDT,stock,triggered,QQQ,QQQ,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-04-14,,626.39,,ok,
 2026-04-14T18:56:19Z,2026-04-14 14:56:19 EDT,stock,triggered,MSFT,MSFT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-14,,391.12,,ok,
 2026-04-14T19:58:52Z,2026-04-14 15:58:52 EDT,stock,cleared,MSFT,MSFT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-04-14,,393.1,,ok,
