@@ -32,3 +32,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,triggered,GOOG,GOOG,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-17,,335.19,,ok,
 2026-04-17T14:05:56Z,2026-04-17 10:05:56 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-17,,43.865,,ok,KEEPING_PACE_OR_LEADING
 2026-04-20T14:08:20Z,2026-04-20 10:08:20 EDT,stock,triggered,MU,MU,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-20,,447.11,,ok,
+2026-04-21T17:42:16Z,2026-04-21 13:42:16 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-21,,451.835,,ok,KEEPING_PACE_OR_LEADING
