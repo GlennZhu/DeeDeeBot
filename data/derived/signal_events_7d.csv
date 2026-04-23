@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-04-16T12:56:09Z,2026-04-16 08:56:09 EDT,stock,triggered,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-15,,446.39,,ok,NEGATIVE_ALPHA_LT_-5PCT
 2026-04-16T19:53:24Z,2026-04-16 15:53:24 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.7362,,ok,RS_TREND_DOWN
 2026-04-16T20:35:41Z,2026-04-16 16:35:41 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.5401,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-17T04:19:31Z,2026-04-17 00:19:31 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-16,,42.61,,ok,RS_TREND_DOWN
