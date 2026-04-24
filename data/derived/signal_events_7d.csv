@@ -21,3 +21,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,ARM,ARM,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,216.8,,ok,
 2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,INTC,INTC,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-23,,80.07,,ok,
 2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,INTC,INTC,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,80.07,,ok,
+2026-04-24T09:10:06Z,2026-04-24 05:10:06 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-23,,843.0,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
