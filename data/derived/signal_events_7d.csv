@@ -15,3 +15,9 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-23T16:14:24Z,2026-04-23 12:14:24 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,427.5,,ok,
 2026-04-23T17:44:15Z,2026-04-23 13:44:15 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,418.99,,ok,
 2026-04-24T05:20:39Z,2026-04-24 01:20:39 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-23,,851.87,,ok,RS_TREND_DOWN
+2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,AMD,AMD,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-23,,328.81,,ok,
+2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,AMD,AMD,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,328.81,,ok,
+2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,ARM,ARM,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-23,,216.8,,ok,
+2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,ARM,ARM,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,216.8,,ok,
+2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,INTC,INTC,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-23,,80.07,,ok,
+2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,INTC,INTC,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,80.07,,ok,
