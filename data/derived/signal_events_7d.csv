@@ -9,8 +9,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-21T17:42:16Z,2026-04-21 13:42:16 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-21,,451.835,,ok,KEEPING_PACE_OR_LEADING
 2026-04-23T09:01:11Z,2026-04-23 05:01:11 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-22,,849.45,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-23T10:43:49Z,2026-04-23 06:43:49 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-22,,853.03,,ok,RS_TREND_DOWN
-2026-04-23T16:14:24Z,2026-04-23 12:14:24 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-23,,849.5,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-23T16:14:24Z,2026-04-23 12:14:24 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,427.5,,ok,
+2026-04-23T16:14:24Z,2026-04-23 12:14:24 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-23,,849.5,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-23T17:44:15Z,2026-04-23 13:44:15 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-23,,418.99,,ok,
 2026-04-24T05:20:39Z,2026-04-24 01:20:39 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-23,,851.87,,ok,RS_TREND_DOWN
 2026-04-24T07:14:09Z,2026-04-24 03:14:09 EDT,stock,triggered,AMD,AMD,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-23,,328.81,,ok,
