@@ -38,6 +38,9 @@ class _FakeStreamlit:
     def caption(self, *_args, **_kwargs) -> None:
         return None
 
+    def markdown(self, *_args, **_kwargs) -> None:
+        return None
+
     def tabs(self, labels):
         return [_FakeTab() for _ in labels]
 

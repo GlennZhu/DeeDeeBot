@@ -330,9 +330,160 @@ def _event_message(row: pd.Series) -> str:
 
 def _signal_badge(label: str, color: str) -> str:
     return (
-        f"<span style='background-color:{color};color:white;padding:0.2rem 0.45rem;"
-        "border-radius:0.4rem;font-size:0.78rem;'>"
+        f"<span style='background:{color};color:#ffffff;"
+        "padding:0.22rem 0.65rem;border-radius:999px;"
+        "font-size:0.74rem;font-weight:600;letter-spacing:0.02em;"
+        "display:inline-block;margin:0.15rem 0.18rem 0.15rem 0;"
+        "box-shadow:0 1px 3px rgba(0,0,0,0.35),"
+        "inset 0 1px 0 rgba(255,255,255,0.18);'>"
         f"{label}</span>"
+    )
+
+
+_GLOBAL_STYLES = """
+<style>
+.stApp {
+    background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(31,111,235,0.12), transparent 60%),
+        radial-gradient(900px 500px at 110% 0%, rgba(73,227,194,0.10), transparent 60%),
+        #070b14;
+}
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+.block-container {padding-top: 1.6rem;}
+
+.app-hero {
+    padding: 1.3rem 1.5rem;
+    border-radius: 16px;
+    background: linear-gradient(135deg,
+        rgba(73,227,194,0.12) 0%,
+        rgba(31,111,235,0.10) 60%,
+        rgba(17,26,45,0.55) 100%);
+    border: 1px solid rgba(73,227,194,0.22);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    margin-bottom: 1.1rem;
+}
+.app-hero h1 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    background: linear-gradient(90deg, #49e3c2 0%, #6ea8ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.app-hero p {
+    margin: 0.35rem 0 0 0;
+    color: #94a3b8;
+    font-size: 0.92rem;
+}
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0.4rem;
+    background: rgba(17,26,45,0.55);
+    border: 1px solid rgba(148,163,184,0.10);
+    border-radius: 12px;
+    padding: 0.35rem;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px;
+    padding: 0.55rem 1.1rem;
+    color: #94a3b8;
+    font-weight: 500;
+    background: transparent;
+    transition: color 120ms ease, background 120ms ease;
+}
+.stTabs [data-baseweb="tab"]:hover {color: #e8eef8;}
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg,
+        rgba(73,227,194,0.22),
+        rgba(31,111,235,0.18));
+    color: #e8eef8 !important;
+    box-shadow: inset 0 0 0 1px rgba(73,227,194,0.35);
+}
+.stTabs [data-baseweb="tab-highlight"] {display: none;}
+
+[data-testid="stMetric"] {
+    background: linear-gradient(160deg,
+        rgba(17,26,45,0.85),
+        rgba(11,17,32,0.45));
+    border: 1px solid rgba(148,163,184,0.10);
+    border-radius: 10px;
+    padding: 0.7rem 0.9rem;
+}
+[data-testid="stMetricValue"] {
+    font-size: 1.45rem;
+    font-weight: 700;
+}
+[data-testid="stMetricLabel"] p {
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border-radius: 14px !important;
+    border: 1px solid rgba(148,163,184,0.12) !important;
+    background: linear-gradient(160deg,
+        rgba(17,26,45,0.55),
+        rgba(11,17,32,0.30));
+    transition: border-color 140ms ease, transform 140ms ease;
+}
+[data-testid="stVerticalBlockBorderWrapper"]:hover {
+    border-color: rgba(73,227,194,0.32) !important;
+}
+
+[data-testid="stAlert"] {
+    border-radius: 12px;
+    border: 1px solid rgba(31,111,235,0.28);
+    background: rgba(31,111,235,0.08);
+}
+
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 {
+    color: #e8eef8;
+    letter-spacing: -0.01em;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid rgba(148,163,184,0.12);
+    margin: 1.4rem 0 1.2rem 0;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 1rem 0 0.6rem 0;
+}
+.section-title::before {
+    content: "";
+    display: inline-block;
+    width: 4px;
+    height: 1.05rem;
+    border-radius: 2px;
+    background: linear-gradient(180deg, #49e3c2, #1f6feb);
+}
+.section-title h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+</style>
+"""
+
+
+def _inject_app_styles() -> None:
+    st.markdown(_GLOBAL_STYLES, unsafe_allow_html=True)
+
+
+def _section_title(title: str) -> None:
+    st.markdown(
+        f"<div class='section-title'><h3>{title}</h3></div>",
+        unsafe_allow_html=True,
     )
 
 
@@ -486,13 +637,18 @@ def _render_macro_tab(selected_window: str) -> None:
 
     series_by_metric = {metric_key: _load_metric_series(metric_key) for metric_key in METRIC_ORDER}
 
-    cols = st.columns(5)
+    _section_title("Latest Macro Signals")
+    cols = st.columns(5, gap="small")
     for idx, metric_key in enumerate(METRIC_ORDER):
         metric_name = SERIES_CONFIG[metric_key]["metric_name"]
         if metric_key == "m2":
             metric_name = "M2 YoY"
-        card = cols[idx]
-        card.subheader(metric_name)
+        card = cols[idx].container(border=True)
+        card.markdown(
+            f"<div style='font-size:0.95rem;font-weight:600;color:#cbd5e1;"
+            f"margin-bottom:0.3rem;'>{metric_name}</div>",
+            unsafe_allow_html=True,
+        )
 
         metric_snapshot = snapshot[snapshot["metric_key"] == metric_key] if not snapshot.empty else pd.DataFrame()
         metric_signal = signals[signals["metric_key"] == metric_key] if not signals.empty else pd.DataFrame()
@@ -548,7 +704,8 @@ def _render_macro_tab(selected_window: str) -> None:
         elif snapshot_row is not None and "source" in metric_snapshot.columns and pd.notna(snapshot_row["source"]):
             card.caption(f"Source: {snapshot_row['source']}")
 
-    st.subheader("Historical Series")
+    st.markdown("<hr/>", unsafe_allow_html=True)
+    _section_title(f"Historical Series &nbsp;&middot;&nbsp; {selected_window}")
     history_years = HISTORY_OPTIONS[selected_window]
 
     for metric_key in METRIC_ORDER:
@@ -579,7 +736,7 @@ def _render_stock_tab() -> None:
         STOCK_SIGNALS_PATH,
         ["as_of_date", "last_updated_utc", "intraday_quote_timestamp_utc"],
     )
-    st.subheader("Latest Watchlist Signals")
+    _section_title("Latest Watchlist Signals")
 
     if stock_signals.empty:
         st.info("No stock signals found yet. Run `python -m src.pipeline` first.")
@@ -596,11 +753,21 @@ def _render_stock_tab() -> None:
         stock_signals["benchmark_ticker"] = stock_signals["benchmark_ticker"].astype(str).str.upper()
     signal_by_ticker = {row["ticker"]: row for _, row in stock_signals.iterrows()}
 
-    card_cols = st.columns(2)
+    card_cols = st.columns(2, gap="small")
     for idx, watch_row in watchlist.iterrows():
         ticker = str(watch_row["ticker"])
-        card = card_cols[idx % 2]
-        card.subheader(ticker)
+        card = card_cols[idx % 2].container(border=True)
+        card.markdown(
+            f"<div style='display:flex;align-items:center;gap:0.55rem;"
+            "margin-bottom:0.35rem;'>"
+            "<span style='display:inline-block;width:10px;height:10px;"
+            "border-radius:50%;background:linear-gradient(135deg,#49e3c2,#1f6feb);"
+            "box-shadow:0 0 10px rgba(73,227,194,0.55);'></span>"
+            f"<span style='font-size:1.15rem;font-weight:700;color:#e8eef8;"
+            f"letter-spacing:0.02em;'>{ticker}</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
         row = signal_by_ticker.get(ticker)
         if row is None:
             card.caption("No computed data for this ticker yet.")
@@ -666,7 +833,7 @@ def _render_stock_tab() -> None:
 
 def _render_signal_history_tab() -> None:
     signal_events = _load_csv(SIGNAL_EVENTS_PATH, ["event_timestamp_utc"])
-    st.subheader("Signal Events (Past 7 Days)")
+    _section_title("Signal Events &middot; Past 7 Days")
 
     if signal_events.empty:
         st.info("No signal event history found yet. Run the pipeline to begin tracking fired signals.")
@@ -726,13 +893,14 @@ def _render_signal_history_tab() -> None:
         signal_events["event_type"].str.title()
     )
 
-    metric_cols = st.columns(5)
+    metric_cols = st.columns(5, gap="small")
     metric_cols[0].metric("Total (7D)", len(signal_events))
     metric_cols[1].metric("Macro", int((signal_events["domain"] == "macro").sum()))
     metric_cols[2].metric("Stock", int((signal_events["domain"] == "stock").sum()))
     metric_cols[3].metric("Triggered", int((signal_events["event_type"] == "triggered").sum()))
     metric_cols[4].metric("Cleared", int((signal_events["event_type"] == "cleared").sum()))
 
+    st.markdown("<hr/>", unsafe_allow_html=True)
     filter_cols = st.columns(3)
     selected_domain = filter_cols[0].selectbox("Domain", ["All", "Macro", "Stock"], index=0)
     selected_event_type = filter_cols[1].selectbox("Event Type", ["All", "Triggered", "Cleared"], index=0)
@@ -790,11 +958,22 @@ def _render_signal_history_tab() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Macro + Stock Signal Monitor", layout="wide")
+    st.set_page_config(
+        page_title="Macro + Stock Signal Monitor",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
     _refresh_cache_for_latest_dashboard_data()
+    _inject_app_styles()
 
-    st.title("Macro + Stock Signal Monitor")
-    st.caption("Data source: cached CSV generated by GitHub Actions. No live API calls at page load.")
+    st.markdown(
+        "<div class='app-hero'>"
+        "<h1>Macro &amp; Stock Signal Monitor</h1>"
+        "<p>Cached snapshots from the nightly GitHub Actions pipeline &mdash; "
+        "no live API calls at page load.</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     selected_window = "15Y"
 
