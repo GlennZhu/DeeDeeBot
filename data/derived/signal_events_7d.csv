@@ -8,3 +8,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-30T14:22:03Z,2026-04-30 10:22:03 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-30,,402.29,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-04-30T15:58:02Z,2026-04-30 11:58:02 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-30,,371.84,,ok,
 2026-04-30T21:14:33Z,2026-04-30 17:14:33 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-30,,410.0,,ok,RS_TREND_DOWN
+2026-04-30T21:33:09Z,2026-04-30 17:33:09 EDT,macro,triggered,ten_year_yield,10Y Treasury Yield,,ten_year_yield_gte_4_4,10Y yield >= 4.4,2026-04-29,4.42,,normal -> equity_pressure_zone,,
