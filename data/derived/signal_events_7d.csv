@@ -3,3 +3,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-30T06:39:06Z,2026-04-30 02:39:06 EDT,stock,triggered,MU,MU,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-04-29,,523.16,,ok,
 2026-04-30T06:39:06Z,2026-04-30 02:39:06 EDT,stock,cleared,MU,MU,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-29,,523.16,,ok,KEEPING_PACE_OR_LEADING
 2026-04-30T08:59:39Z,2026-04-30 04:59:39 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-29,,367.6,,ok,
+2026-04-30T12:05:56Z,2026-04-30 08:05:56 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-04-29,,374.24,,ok,
