@@ -11,3 +11,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-04-30T21:33:09Z,2026-04-30 17:33:09 EDT,macro,triggered,ten_year_yield,10Y Treasury Yield,,ten_year_yield_gte_4_4,10Y yield >= 4.4,2026-04-29,4.42,,normal -> equity_pressure_zone,,
 2026-04-30T22:08:36Z,2026-04-30 18:08:36 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-30,,409.8,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-01T04:12:46Z,2026-05-01 00:12:46 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-30,,408.7,,ok,RS_TREND_DOWN
+2026-05-01T10:09:45Z,2026-05-01 06:09:45 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-30,,409.44,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
