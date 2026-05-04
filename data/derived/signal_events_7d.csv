@@ -15,3 +15,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-01T12:10:06Z,2026-05-01 08:10:06 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-04-30,,409.92,,ok,RS_TREND_DOWN
 2026-05-01T13:51:19Z,2026-05-01 09:51:19 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-01,,376.78,,ok,
 2026-05-01T14:43:35Z,2026-05-01 10:43:35 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-01,,379.77,,ok,
+2026-05-04T14:59:10Z,2026-05-04 10:59:10 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-04,,379.4,,ok,
