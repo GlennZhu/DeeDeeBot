@@ -25,3 +25,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-05T16:19:23Z,2026-05-05 12:19:23 EDT,stock,triggered,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-05,,1400.5001,,ok,
 2026-05-05T17:56:30Z,2026-05-05 13:56:30 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-05,,382.33,,ok,
 2026-05-05T19:03:24Z,2026-05-05 15:03:24 EDT,stock,triggered,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-05,,196.545,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-05-05T20:15:33Z,2026-05-05 16:15:33 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-05,,384.69,,ok,
