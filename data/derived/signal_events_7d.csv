@@ -44,3 +44,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-08T15:50:17Z,2026-05-08 11:50:17 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-08,,147.36,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-08T15:50:17Z,2026-05-08 11:50:17 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-08,,45.35,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-08T16:58:48Z,2026-05-08 12:58:48 EDT,stock,cleared,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-08,,430.11,,ok,
+2026-05-08T18:07:04Z,2026-05-08 14:07:04 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-08,,151.09,,ok,RS_TREND_DOWN
