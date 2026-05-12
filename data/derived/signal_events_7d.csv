@@ -12,8 +12,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-06T17:09:21Z,2026-05-06 13:09:21 EDT,stock,cleared,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1375.33,,ok,
 2026-05-06T17:09:21Z,2026-05-06 13:09:21 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,913.22,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-06T18:54:30Z,2026-05-06 14:54:30 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,937.99,,ok,RS_TREND_DOWN
-2026-05-06T20:15:40Z,2026-05-06 16:15:40 EDT,stock,triggered,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1423.8,,ok,
 2026-05-06T20:15:40Z,2026-05-06 16:15:40 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,697.47,,ok,
+2026-05-06T20:15:40Z,2026-05-06 16:15:40 EDT,stock,triggered,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1423.8,,ok,
 2026-05-06T21:20:06Z,2026-05-06 17:20:06 EDT,stock,cleared,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1387.06,,ok,
 2026-05-06T21:20:06Z,2026-05-06 17:20:06 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,922.5109,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-06T22:11:48Z,2026-05-06 18:11:48 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,694.844,,ok,
@@ -59,3 +59,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-11T21:39:10Z,2026-05-11 17:39:10 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,46.3176,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-11T21:49:46Z,2026-05-11 17:49:46 EDT,macro,cleared,ten_year_yield,10Y Treasury Yield,,ten_year_yield_gte_4_4,10Y yield >= 4.4,2026-05-08,4.38,,equity_pressure_zone -> normal,,
 2026-05-12T04:51:35Z,2026-05-12 00:51:35 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,46.31,,ok,RS_TREND_DOWN
+2026-05-12T10:12:04Z,2026-05-12 06:12:04 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,45.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
