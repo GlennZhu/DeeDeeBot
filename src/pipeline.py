@@ -1103,51 +1103,165 @@ def _detect_new_stock_trigger_events(previous: pd.DataFrame, current: pd.DataFra
     return events
 
 
-def _build_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
-    lines = [f"Macro threshold state alert ({now_iso})"]
-    for event in events:
-        changes: list[str] = []
-        if event["new_threshold_labels"]:
-            changes.append(f"triggered: {', '.join(event['new_threshold_labels'])}")
-        if event["cleared_threshold_labels"]:
-            changes.append(f"cleared: {', '.join(event['cleared_threshold_labels'])}")
-        threshold_changes = "; ".join(changes)
-        lines.append(
-            (
-                f"- {event['metric_name']} ({event['metric_key']}): {threshold_changes}; "
-                f"state {event['prev_signal_state']} -> {event['signal_state']}; "
-                f"value={_value_for_message(event['value'])}; as_of={event['as_of_date']}"
-            )
-        )
-    return "\n".join(lines)
+DISCORD_COLOR_ALERT = 0xE74C3C
+DISCORD_COLOR_CLEARED = 0x2ECC71
+DISCORD_COLOR_MIXED = 0xF1C40F
+DISCORD_COLOR_INFO = 0x3498DB
+DISCORD_EMBED_FIELD_LIMIT = 25
+DISCORD_EMBED_PER_MESSAGE_LIMIT = 10
+DISCORD_EMBED_VALUE_LIMIT = 1024
 
 
-def _build_stock_discord_message(events: list[dict[str, Any]], now_iso: str) -> str:
-    lines = [f"Stock watchlist trigger alert ({now_iso})"]
-    for event in events:
-        reason_suffix = ""
+def _classify_alert_color(triggered_count: int, cleared_count: int) -> int:
+    if triggered_count and cleared_count:
+        return DISCORD_COLOR_MIXED
+    if triggered_count:
+        return DISCORD_COLOR_ALERT
+    if cleared_count:
+        return DISCORD_COLOR_CLEARED
+    return DISCORD_COLOR_INFO
+
+
+def _truncate_field_value(value: str) -> str:
+    if len(value) <= DISCORD_EMBED_VALUE_LIMIT:
+        return value
+    return value[: DISCORD_EMBED_VALUE_LIMIT - 1] + "…"
+
+
+def _macro_event_field(event: dict[str, Any]) -> dict[str, Any]:
+    lines: list[str] = []
+    if event["new_threshold_labels"]:
+        lines.append(f"**Triggered:** {', '.join(event['new_threshold_labels'])}")
+    if event["cleared_threshold_labels"]:
+        lines.append(f"**Cleared:** {', '.join(event['cleared_threshold_labels'])}")
+    prev_state = event.get("prev_signal_state", "unknown")
+    new_state = event.get("signal_state", "unknown")
+    if prev_state != new_state:
+        lines.append(f"**State:** `{prev_state}` → `{new_state}`")
+    else:
+        lines.append(f"**State:** `{new_state}`")
+    lines.append(
+        f"**Value:** `{_value_for_message(event['value'])}` · as of {event['as_of_date']}"
+    )
+    return {
+        "name": f"{event['metric_name']} ({event['metric_key']})",
+        "value": _truncate_field_value("\n".join(lines)),
+        "inline": False,
+    }
+
+
+def _build_macro_discord_payload(events: list[dict[str, Any]], now_iso: str) -> dict[str, Any]:
+    triggered_count = sum(1 for e in events if e["new_threshold_labels"])
+    cleared_count = sum(1 for e in events if e["cleared_threshold_labels"])
+    color = _classify_alert_color(triggered_count, cleared_count)
+
+    summary_bits: list[str] = []
+    if triggered_count:
+        summary_bits.append(f"**{triggered_count}** triggered")
+    if cleared_count:
+        summary_bits.append(f"**{cleared_count}** cleared")
+    description = " · ".join(summary_bits) if summary_bits else "No changes"
+
+    fields = [_macro_event_field(e) for e in events]
+    embeds: list[dict[str, Any]] = []
+    for idx in range(0, len(fields), DISCORD_EMBED_FIELD_LIMIT):
+        chunk = fields[idx : idx + DISCORD_EMBED_FIELD_LIMIT]
+        embed: dict[str, Any] = {
+            "title": "Macro Threshold Alert",
+            "color": color,
+            "fields": chunk,
+            "timestamp": now_iso,
+            "footer": {"text": "DeeDeeBot · macro signals"},
+        }
+        if idx == 0:
+            embed["description"] = description
+        embeds.append(embed)
+    embeds = embeds[:DISCORD_EMBED_PER_MESSAGE_LIMIT]
+
+    content = f"Macro threshold alert — {description}"
+    return {"content": content, "embeds": embeds}
+
+
+def _stock_ticker_field(
+    ticker: str,
+    benchmark: str,
+    ticker_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    lines: list[str] = []
+    for event in ticker_events:
+        action = "triggered" if event.get("event_type") == "triggered" else "cleared"
+        marker = "▲" if action == "triggered" else "▼"
+        lines.append(f"{marker} **{event['trigger_label']}** — {action}")
         if (
-            event.get("event_type") == "triggered"
+            action == "triggered"
             and event.get("trigger_id") == "strong_sell_weak_strength"
             and event.get("relative_strength_reasons")
         ):
-            reason_suffix = f"; rs_reasons={event['relative_strength_reasons']}"
-        action = "triggered" if event.get("event_type") == "triggered" else "cleared"
-        lines.append(
-            (
-                f"- {event['ticker']} vs {event['benchmark_ticker']}: {event['trigger_label']} {action}; "
-                f"price={_value_for_message(event['price'])}; "
-                f"as_of={event['as_of_date']}; status={event['status']}{reason_suffix}"
-            )
-        )
-    return "\n".join(lines)
+            lines.append(f"   _RS reasons:_ {event['relative_strength_reasons']}")
+
+    last = ticker_events[-1]
+    lines.append(
+        f"**Price:** `{_value_for_message(last['price'])}` · as of {last['as_of_date']}"
+    )
+    status = str(last.get("status", "")).strip()
+    if status:
+        lines.append(f"**Status:** {status}")
+
+    return {
+        "name": f"{ticker} vs {benchmark}",
+        "value": _truncate_field_value("\n".join(lines)),
+        "inline": False,
+    }
 
 
-def _post_discord_message(webhook_url: str, content: str) -> None:
-    payload = json.dumps({"content": content}).encode("utf-8")
+def _build_stock_discord_payload(events: list[dict[str, Any]], now_iso: str) -> dict[str, Any]:
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    order: list[tuple[str, str]] = []
+    for event in events:
+        key = (event["ticker"], event["benchmark_ticker"])
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        grouped[key].append(event)
+
+    triggered_count = sum(1 for e in events if e.get("event_type") == "triggered")
+    cleared_count = sum(1 for e in events if e.get("event_type") == "cleared")
+    color = _classify_alert_color(triggered_count, cleared_count)
+
+    summary_bits: list[str] = []
+    if triggered_count:
+        summary_bits.append(f"**{triggered_count}** triggered")
+    if cleared_count:
+        summary_bits.append(f"**{cleared_count}** cleared")
+    ticker_count = len(order)
+    summary_bits.append(f"across **{ticker_count}** ticker{'s' if ticker_count != 1 else ''}")
+    description = " · ".join(summary_bits)
+
+    fields = [_stock_ticker_field(t, b, grouped[(t, b)]) for (t, b) in order]
+    embeds: list[dict[str, Any]] = []
+    for idx in range(0, len(fields), DISCORD_EMBED_FIELD_LIMIT):
+        chunk = fields[idx : idx + DISCORD_EMBED_FIELD_LIMIT]
+        embed: dict[str, Any] = {
+            "title": "Stock Watchlist Alert",
+            "color": color,
+            "fields": chunk,
+            "timestamp": now_iso,
+            "footer": {"text": "DeeDeeBot · stock triggers"},
+        }
+        if idx == 0:
+            embed["description"] = description
+        embeds.append(embed)
+    embeds = embeds[:DISCORD_EMBED_PER_MESSAGE_LIMIT]
+
+    content = f"Stock watchlist alert — {description}"
+    return {"content": content, "embeds": embeds}
+
+
+def _post_discord_payload(webhook_url: str, payload: dict[str, Any]) -> None:
+    body = json.dumps(payload).encode("utf-8")
     req = request.Request(
         webhook_url,
-        data=payload,
+        data=body,
         headers={
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -1174,9 +1288,9 @@ def _notify_threshold_events(events: list[dict[str, Any]], now_iso: str) -> None
         print("Warning: DISCORD_WEBHOOK_URL is not set; skipping threshold alert notification.")
         return
 
-    message = _build_discord_message(events, now_iso)
+    payload = _build_macro_discord_payload(events, now_iso)
     try:
-        _post_discord_message(webhook_url, message)
+        _post_discord_payload(webhook_url, payload)
     except Exception as exc:
         print(f"Warning: failed to send Discord alert: {exc}")
 
@@ -1195,9 +1309,9 @@ def _notify_stock_trigger_events(events: list[dict[str, Any]], now_iso: str) -> 
         print("Warning: DISCORD_WEBHOOK_URL is not set; skipping stock trigger alert notification.")
         return
 
-    message = _build_stock_discord_message(events, now_iso)
+    payload = _build_stock_discord_payload(events, now_iso)
     try:
-        _post_discord_message(webhook_url, message)
+        _post_discord_payload(webhook_url, payload)
     except Exception as exc:
         print(f"Warning: failed to send stock Discord alert: {exc}")
 
