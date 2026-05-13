@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-06T11:17:08Z,2026-05-06 07:17:08 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-05,,201.47,,ok,RS_TREND_DOWN
 2026-05-06T17:09:21Z,2026-05-06 13:09:21 EDT,stock,cleared,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1375.33,,ok,
 2026-05-06T17:09:21Z,2026-05-06 13:09:21 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,913.22,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-06T18:54:30Z,2026-05-06 14:54:30 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,937.99,,ok,RS_TREND_DOWN
