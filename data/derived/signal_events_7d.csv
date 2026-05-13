@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-06T18:54:30Z,2026-05-06 14:54:30 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,937.99,,ok,RS_TREND_DOWN
 2026-05-06T20:15:40Z,2026-05-06 16:15:40 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,697.47,,ok,
 2026-05-06T20:15:40Z,2026-05-06 16:15:40 EDT,stock,triggered,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1423.8,,ok,
 2026-05-06T21:20:06Z,2026-05-06 17:20:06 EDT,stock,cleared,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-06,,1387.06,,ok,
@@ -13,8 +12,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-07T09:14:47Z,2026-05-07 05:14:47 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,414.5259,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-07T13:11:21Z,2026-05-07 09:11:21 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-06,,917.0,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-07T15:33:07Z,2026-05-07 11:33:07 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-07,,425.87,,ok,RS_TREND_DOWN
-2026-05-07T17:21:48Z,2026-05-07 13:21:48 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,640.01,,ok,
 2026-05-07T17:21:48Z,2026-05-07 13:21:48 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,693.5401,,ok,
+2026-05-07T17:21:48Z,2026-05-07 13:21:48 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,640.01,,ok,
 2026-05-07T19:09:13Z,2026-05-07 15:09:13 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,392.155,,ok,
 2026-05-07T20:36:27Z,2026-05-07 16:36:27 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,394.73,,ok,
 2026-05-07T21:30:35Z,2026-05-07 17:30:35 EDT,macro,cleared,ten_year_yield,10Y Treasury Yield,,ten_year_yield_gte_4_4,10Y yield >= 4.4,2026-05-06,4.36,,equity_pressure_zone -> normal,,
