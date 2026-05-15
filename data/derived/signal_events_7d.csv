@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-08T01:22:41Z,2026-05-07 21:22:41 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-07,,145.7507,,ok,RS_TREND_DOWN
 2026-05-08T04:27:15Z,2026-05-08 00:27:15 EDT,stock,triggered,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-07,,412.8,,ok,
 2026-05-08T09:04:37Z,2026-05-08 05:04:37 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,699.79,,ok,
 2026-05-08T10:46:49Z,2026-05-08 06:46:49 EDT,stock,triggered,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-07,,662.4082,,ok,
