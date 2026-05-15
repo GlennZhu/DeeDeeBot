@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-08T14:12:38Z,2026-05-08 10:12:38 EDT,stock,triggered,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-08,,422.7776,,ok,
 2026-05-08T15:50:17Z,2026-05-08 11:50:17 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-08,,45.35,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-08T15:50:17Z,2026-05-08 11:50:17 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-08,,147.36,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-08T16:58:48Z,2026-05-08 12:58:48 EDT,stock,cleared,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-08,,430.11,,ok,
@@ -10,11 +9,11 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-11T00:04:30Z,2026-05-10 20:04:30 EDT,stock,cleared,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-08,,1561.98,,ok,
 2026-05-11T10:54:24Z,2026-05-11 06:54:24 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-08,,45.92,,ok,RS_TREND_DOWN
 2026-05-11T10:54:24Z,2026-05-11 06:54:24 EDT,stock,triggered,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-08,,425.01,,ok,
-2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,164.29,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,cleared,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-11,,427.585,,ok,
-2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,triggered,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-11,,1569.0,,ok,
-2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,45.81,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,cleared,GOOG,GOOG,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-11,,390.865,,ok,
+2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,45.81,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,cleared,AVGO,AVGO,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-05-11,,427.585,,ok,
+2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,164.29,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-05-11T13:35:22Z,2026-05-11 09:35:22 EDT,stock,triggered,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-11,,1569.0,,ok,
 2026-05-11T16:17:58Z,2026-05-11 12:17:58 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,1064.05,,ok,KEEPING_PACE_OR_LEADING
 2026-05-11T16:17:58Z,2026-05-11 12:17:58 EDT,stock,cleared,SNDK,SNDK,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-11,,1562.02,,ok,
 2026-05-11T16:17:58Z,2026-05-11 12:17:58 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,183.19,,ok,KEEPING_PACE_OR_LEADING
@@ -23,8 +22,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-11T21:49:46Z,2026-05-11 17:49:46 EDT,macro,cleared,ten_year_yield,10Y Treasury Yield,,ten_year_yield_gte_4_4,10Y yield >= 4.4,2026-05-08,4.38,,equity_pressure_zone -> normal,,
 2026-05-12T04:51:35Z,2026-05-12 00:51:35 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,46.31,,ok,RS_TREND_DOWN
 2026-05-12T10:12:04Z,2026-05-12 06:12:04 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,45.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-05-12T12:14:25Z,2026-05-12 08:14:25 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,410.5681,,ok,RS_TREND_DOWN
 2026-05-12T12:14:25Z,2026-05-12 08:14:25 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-11,,707.03,,ok,
+2026-05-12T12:14:25Z,2026-05-12 08:14:25 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-11,,410.5681,,ok,RS_TREND_DOWN
 2026-05-12T14:48:42Z,2026-05-12 10:48:42 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-12,,45.705,,ok,RS_TREND_DOWN
 2026-05-12T14:48:42Z,2026-05-12 10:48:42 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-12,,750.7418,,ok,
 2026-05-12T14:48:42Z,2026-05-12 10:48:42 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-12,,409.06,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
@@ -34,8 +33,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-12T21:49:38Z,2026-05-12 17:49:38 EDT,macro,triggered,ten_year_yield,10Y Treasury Yield,,ten_year_yield_gte_4_4,10Y yield >= 4.4,2026-05-11,4.42,,normal -> equity_pressure_zone,,
 2026-05-12T22:50:23Z,2026-05-12 18:50:23 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-12,,766.05,,ok,
 2026-05-13T08:21:14Z,2026-05-13 04:21:14 EDT,stock,triggered,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-12,,815.72,,ok,
-2026-05-13T11:00:55Z,2026-05-13 07:00:55 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-12,,712.48,,ok,
 2026-05-13T11:00:55Z,2026-05-13 07:00:55 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-12,,45.76,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-05-13T11:00:55Z,2026-05-13 07:00:55 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-12,,712.48,,ok,
 2026-05-13T15:59:47Z,2026-05-13 11:59:47 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-13,,710.63,,ok,
 2026-05-13T23:39:25Z,2026-05-13 19:39:25 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-13,,717.7,,ok,
 2026-05-14T05:06:43Z,2026-05-14 01:06:43 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-13,,417.72,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
@@ -48,3 +47,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-14T16:31:41Z,2026-05-14 12:31:41 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-14,,790.43,,ok,
 2026-05-14T23:33:20Z,2026-05-14 19:33:20 EDT,stock,triggered,SOXX,SOXX,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-05-14,,530.56,,ok,
 2026-05-15T08:15:16Z,2026-05-15 04:15:16 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-14,,711.4885,,ok,
+2026-05-15T14:42:22Z,2026-05-15 10:42:22 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-15,,44.86,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
