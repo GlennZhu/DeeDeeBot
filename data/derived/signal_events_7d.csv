@@ -1,6 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-13T11:00:55Z,2026-05-13 07:00:55 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-12,,712.48,,ok,
-2026-05-13T11:00:55Z,2026-05-13 07:00:55 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-12,,45.76,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-13T15:59:47Z,2026-05-13 11:59:47 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-13,,710.63,,ok,
 2026-05-13T23:39:25Z,2026-05-13 19:39:25 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-13,,717.7,,ok,
 2026-05-14T05:06:43Z,2026-05-14 01:06:43 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-13,,417.72,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
@@ -21,3 +19,5 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-19T14:15:26Z,2026-05-19 10:15:26 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,161.09,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-19T17:13:24Z,2026-05-19 13:13:24 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,173.565,,ok,RS_TREND_DOWN
 2026-05-20T05:37:06Z,2026-05-20 01:37:06 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,895.0,,ok,RS_TREND_DOWN
+2026-05-20T11:32:40Z,2026-05-20 07:32:40 EDT,stock,cleared,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,418.2757,,ok,RS_TREND_DOWN
+2026-05-20T11:32:40Z,2026-05-20 07:32:40 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,915.471,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
