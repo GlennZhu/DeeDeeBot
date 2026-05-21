@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-14T14:39:32Z,2026-05-14 10:39:32 EDT,stock,triggered,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-14,,719.469,,ok,
 2026-05-14T16:31:41Z,2026-05-14 12:31:41 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-14,,46.225,,ok,RS_TREND_DOWN
 2026-05-14T16:31:41Z,2026-05-14 12:31:41 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-14,,790.43,,ok,
 2026-05-14T23:33:20Z,2026-05-14 19:33:20 EDT,stock,triggered,SOXX,SOXX,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-05-14,,530.56,,ok,
@@ -17,3 +16,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-20T14:13:45Z,2026-05-20 10:13:45 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-20,,877.555,,ok,RS_TREND_DOWN
 2026-05-20T14:13:45Z,2026-05-20 10:13:45 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-20,,413.875,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-20T17:29:16Z,2026-05-20 13:29:16 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-20,,863.11,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-05-21T16:27:17Z,2026-05-21 12:27:17 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-21,,957.82,,ok,KEEPING_PACE_OR_LEADING
