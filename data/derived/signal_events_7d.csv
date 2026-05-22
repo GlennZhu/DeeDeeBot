@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-15T08:15:16Z,2026-05-15 04:15:16 EDT,stock,cleared,QQQ,QQQ,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-05-14,,711.4885,,ok,
 2026-05-15T14:42:22Z,2026-05-15 10:42:22 EDT,stock,triggered,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-15,,44.86,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-18T16:14:50Z,2026-05-18 12:14:50 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-18,,419.165,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-18T16:14:50Z,2026-05-18 12:14:50 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-18,,880.41,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
