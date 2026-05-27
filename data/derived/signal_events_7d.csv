@@ -9,3 +9,4 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-27T18:37:19Z,2026-05-27 14:37:19 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-27,,911.0,,ok,RS_TREND_DOWN
 2026-05-27T20:39:05Z,2026-05-27 16:39:05 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-05-27,,42.55,,ok,
 2026-05-27T20:39:05Z,2026-05-27 16:39:05 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-27,,900.8,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-05-27T22:20:47Z,2026-05-27 18:20:47 EDT,stock,triggered,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-05-27,,42.1695,,ok,
