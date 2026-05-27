@@ -1,6 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-20T11:32:40Z,2026-05-20 07:32:40 EDT,stock,cleared,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,418.2757,,ok,RS_TREND_DOWN
-2026-05-20T11:32:40Z,2026-05-20 07:32:40 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-19,,915.471,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-20T14:13:45Z,2026-05-20 10:13:45 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-20,,877.555,,ok,RS_TREND_DOWN
 2026-05-20T14:13:45Z,2026-05-20 10:13:45 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-20,,413.875,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-20T17:29:16Z,2026-05-20 13:29:16 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-20,,863.11,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
