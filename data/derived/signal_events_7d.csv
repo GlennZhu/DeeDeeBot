@@ -1,5 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-21T16:27:17Z,2026-05-21 12:27:17 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-21,,957.82,,ok,KEEPING_PACE_OR_LEADING
 2026-05-22T16:04:50Z,2026-05-22 12:04:50 EDT,stock,triggered,NVDA,NVDA,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-05-22,,217.08,,ok,
 2026-05-26T16:05:13Z,2026-05-26 12:05:13 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-26,,906.95,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-26T16:05:13Z,2026-05-26 12:05:13 EDT,stock,triggered,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-26,,213.59,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
