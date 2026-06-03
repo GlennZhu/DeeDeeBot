@@ -1,7 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-05-27T20:39:05Z,2026-05-27 16:39:05 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-05-27,,42.55,,ok,
-2026-05-27T20:39:05Z,2026-05-27 16:39:05 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-27,,900.8,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-05-27T22:20:47Z,2026-05-27 18:20:47 EDT,stock,triggered,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-05-27,,42.1695,,ok,
 2026-05-28T05:37:00Z,2026-05-28 01:37:00 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-27,,893.3,,ok,RS_TREND_DOWN
 2026-05-28T19:19:21Z,2026-05-28 15:19:21 EDT,stock,triggered,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-05-28,,855.3,,ok,
 2026-05-28T19:19:21Z,2026-05-28 15:19:21 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-28,,855.3,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
@@ -24,3 +21,5 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,952.575,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,IBIT,IBIT,QQQ,entry_rsi_extreme_oversold,Entry: Extreme RSI oversold (< 25; QQQ < 30),2026-06-03,,37.41,,ok,
 2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,426.9101,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-06-03T22:22:25Z,2026-06-03 18:22:25 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,177.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-06-03T22:22:25Z,2026-06-03 18:22:25 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,421.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
