@@ -10,11 +10,11 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-05-29T13:47:13Z,2026-05-29 09:47:13 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-29,,846.14,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-05-29T13:47:13Z,2026-05-29 09:47:13 EDT,stock,triggered,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-05-29,,846.14,,ok,
 2026-06-01T12:25:52Z,2026-06-01 08:25:52 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-05-29,,466.46,,ok,KEEPING_PACE_OR_LEADING
-2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,cleared,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-01,,908.12,,ok,
-2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-01,,187.34,,ok,KEEPING_PACE_OR_LEADING
-2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-01,,224.3099,,ok,RS_TREND_DOWN
-2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,triggered,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-06-01,,1037.89,,ok,
 2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,triggered,GOOG,GOOG,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-01,,372.74,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,triggered,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-06-01,,1037.89,,ok,
+2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-01,,187.34,,ok,KEEPING_PACE_OR_LEADING
+2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,cleared,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-01,,908.12,,ok,
+2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-01,,224.3099,,ok,RS_TREND_DOWN
 2026-06-02T22:34:17Z,2026-06-02 18:34:17 EDT,macro,triggered,hiring_rate,Hiring Rate,,hiring_rate_lte_3_4,Hiring rate <= 3.4,2026-04-30,3.2,,normal -> recession_alert,,
 2026-06-03T11:30:34Z,2026-06-03 07:30:34 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-02,,1014.61,,ok,KEEPING_PACE_OR_LEADING
 2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,952.575,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
