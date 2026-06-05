@@ -10,9 +10,9 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-01T18:20:20Z,2026-06-01 14:20:20 EDT,stock,triggered,GOOG,GOOG,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-01,,372.74,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-02T22:34:17Z,2026-06-02 18:34:17 EDT,macro,triggered,hiring_rate,Hiring Rate,,hiring_rate_lte_3_4,Hiring rate <= 3.4,2026-04-30,3.2,,normal -> recession_alert,,
 2026-06-03T11:30:34Z,2026-06-03 07:30:34 EDT,stock,cleared,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-02,,1014.61,,ok,KEEPING_PACE_OR_LEADING
+2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,IBIT,IBIT,QQQ,entry_rsi_extreme_oversold,Entry: Extreme RSI oversold (< 25; QQQ < 30),2026-06-03,,37.41,,ok,
 2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,426.9101,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,952.575,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,IBIT,IBIT,QQQ,entry_rsi_extreme_oversold,Entry: Extreme RSI oversold (< 25; QQQ < 30),2026-06-03,,37.41,,ok,
 2026-06-03T22:22:25Z,2026-06-03 18:22:25 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,421.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-03T22:22:25Z,2026-06-03 18:22:25 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,177.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-04T00:08:40Z,2026-06-03 20:08:40 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-06-03,,1052.01,,ok,
