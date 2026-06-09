@@ -23,3 +23,5 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-08T15:28:51Z,2026-06-08 11:28:51 EDT,stock,triggered,SNDK,SNDK,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-06-08,,1669.335,,ok,
 2026-06-08T18:10:46Z,2026-06-08 14:10:46 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,209.328,,ok,RS_TREND_DOWN
 2026-06-09T05:42:25Z,2026-06-09 01:42:25 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.9799,,ok,RS_TREND_DOWN
+2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-08,,401.435,,ok,
+2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
