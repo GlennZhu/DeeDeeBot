@@ -25,3 +25,7 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-09T05:42:25Z,2026-06-09 01:42:25 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.9799,,ok,RS_TREND_DOWN
 2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-08,,401.435,,ok,
 2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,triggered,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,395.155,,ok,
+2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,triggered,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,867.24,,ok,
+2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,867.24,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,411.085,,ok,RS_TREND_DOWN
