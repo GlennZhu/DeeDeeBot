@@ -1,7 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,IBIT,IBIT,QQQ,entry_rsi_extreme_oversold,Entry: Extreme RSI oversold (< 25; QQQ < 30),2026-06-03,,37.41,,ok,
-2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,426.9101,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
-2026-06-03T16:03:42Z,2026-06-03 12:03:42 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,952.575,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-03T22:22:25Z,2026-06-03 18:22:25 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,177.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-03T22:22:25Z,2026-06-03 18:22:25 EDT,stock,triggered,AVGO,AVGO,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-03,,421.79,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-04T00:08:40Z,2026-06-03 20:08:40 EDT,stock,cleared,MU,MU,QQQ,exit_rsi_overbought,Risk: RSI14 overbought (> 80),2026-06-03,,1052.01,,ok,
@@ -21,8 +18,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-08T15:28:51Z,2026-06-08 11:28:51 EDT,stock,triggered,MU,MU,QQQ,rsi_bearish_divergence,Risk: Bearish RSI divergence,2026-06-08,,951.695,,ok,
 2026-06-08T18:10:46Z,2026-06-08 14:10:46 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,209.328,,ok,RS_TREND_DOWN
 2026-06-09T05:42:25Z,2026-06-09 01:42:25 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.9799,,ok,RS_TREND_DOWN
-2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,cleared,AVGO,AVGO,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-08,,401.435,,ok,
+2026-06-09T11:49:53Z,2026-06-09 07:49:53 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-08,,410.4,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,triggered,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,867.24,,ok,
 2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,triggered,LITE,LITE,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,867.24,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-09T14:11:22Z,2026-06-09 10:11:22 EDT,stock,cleared,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,411.085,,ok,RS_TREND_DOWN
@@ -31,8 +28,8 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-09T16:44:26Z,2026-06-09 12:44:26 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,200.62,,ok,
 2026-06-09T16:44:26Z,2026-06-09 12:44:26 EDT,stock,triggered,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,200.62,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
 2026-06-09T16:44:26Z,2026-06-09 12:44:26 EDT,stock,triggered,MSFT,MSFT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,399.14,,ok,STRUCTURAL_DIVERGENCE; RS_TREND_DOWN
-2026-06-09T18:57:43Z,2026-06-09 14:57:43 EDT,stock,cleared,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,207.045,,ok,
 2026-06-09T18:57:43Z,2026-06-09 14:57:43 EDT,stock,cleared,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,207.045,,ok,RS_TREND_DOWN
+2026-06-09T18:57:43Z,2026-06-09 14:57:43 EDT,stock,cleared,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,207.045,,ok,
 2026-06-10T06:11:10Z,2026-06-10 02:11:10 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,166.93,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
 2026-06-10T06:11:10Z,2026-06-10 02:11:10 EDT,stock,triggered,MSFT,MSFT,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-06-09,,403.215,,ok,
 2026-06-10T06:11:10Z,2026-06-10 02:11:10 EDT,stock,triggered,NVDA,NVDA,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-09,,206.4273,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
@@ -40,3 +37,5 @@ event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name
 2026-06-10T10:20:01Z,2026-06-10 06:20:01 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-09,,203.51,,ok,
 2026-06-10T13:52:34Z,2026-06-10 09:52:34 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-06-10,,375.175,,ok,
 2026-06-10T13:52:34Z,2026-06-10 09:52:34 EDT,stock,triggered,MSFT,MSFT,QQQ,entry_bullish_alignment,Entry: Trend alignment (SMA14 > SMA50 > SMA100/200),2026-06-10,,402.845,,ok,
+2026-06-10T16:52:48Z,2026-06-10 12:52:48 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-10,,171.83,,ok,RS_TREND_DOWN; NEGATIVE_ALPHA_LT_-5PCT
+2026-06-10T16:52:48Z,2026-06-10 12:52:48 EDT,stock,triggered,GOOG,GOOG,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-10,,356.17,,ok,
