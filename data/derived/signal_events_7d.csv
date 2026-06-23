@@ -1,9 +1,4 @@
 event_timestamp_utc,event_timestamp_et,domain,event_type,subject_id,subject_name,benchmark_ticker,signal_id,signal_label,as_of_date,value,price,state_transition,status,details
-2026-06-16T07:39:02Z,2026-06-16 03:39:02 EDT,stock,cleared,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-15,,190.1,,ok,KEEPING_PACE_OR_LEADING
-2026-06-16T12:28:03Z,2026-06-16 08:28:03 EDT,stock,triggered,AAOI,AAOI,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-15,,195.69,,ok,NEGATIVE_ALPHA_LT_-5PCT
-2026-06-16T17:28:41Z,2026-06-16 13:28:41 EDT,stock,triggered,LITE,LITE,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-16,,880.82,,ok,
-2026-06-16T20:22:45Z,2026-06-16 16:22:45 EDT,stock,triggered,AVGO,AVGO,QQQ,squat_ambush_near_ma100_or_ma200,🟢 Buy-Zone Watch: 2%-3% above MA100/200,2026-06-16,,376.4485,,ok,
-2026-06-16T20:22:45Z,2026-06-16 16:22:45 EDT,stock,triggered,NVDA,NVDA,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-16,,207.33,,ok,
 2026-06-16T23:52:16Z,2026-06-16 19:52:16 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_death_cross_50_lt_200,Risk: Death cross (SMA50 < SMA200),2026-06-16,,37.19,,insufficient_data,
 2026-06-16T23:52:16Z,2026-06-16 19:52:16 EDT,stock,cleared,IBIT,IBIT,QQQ,exit_price_below_sma50,Exit: Price Below SMA50,2026-06-16,,37.19,,insufficient_data,
 2026-06-16T23:52:16Z,2026-06-16 19:52:16 EDT,stock,cleared,IBIT,IBIT,QQQ,strong_sell_weak_strength,Strong Sell: Underperforming vs benchmark,2026-06-16,,37.19,,insufficient_data,KEEPING_PACE_OR_LEADING
